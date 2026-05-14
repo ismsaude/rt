@@ -71,8 +71,8 @@ export default function App() {
   const renderContent = () => {
     if (role === 'cuidador') {
       switch (activeTab) {
-        case 'tarefas': return <Dashboard />;
-        case 'cardapio': return <DailyMenu />;
+        case 'tarefas': return <Dashboard role={role} />;
+        case 'cardapio': return <DailyMenu role={role} />;
         case 'plantao': return <ShiftHandover currentUser={currentUser} />;
         default: return <Dashboard />;
       }
@@ -91,8 +91,8 @@ export default function App() {
         case 'cadastros': return <DataRegistration />;
         case 'acessos': return <AccessManagement currentUser={currentUser} />;
         // Cuidador tabs
-        case 'tarefas': return <Dashboard />;
-        case 'cardapio': return <DailyMenu />;
+        case 'tarefas': return <Dashboard role={role} />;
+        case 'cardapio': return <DailyMenu role={role} />;
         case 'plantao': return <ShiftHandover currentUser={currentUser} />;
         // Enfermeiro tabs
         case 'sinais': return <VitalsControl />;
