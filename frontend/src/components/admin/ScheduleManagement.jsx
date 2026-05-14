@@ -104,6 +104,7 @@ export default function ScheduleManagement() {
               <option>12x36 Diurno</option>
               <option>12x36 Noturno</option>
               <option>8h Diárias</option>
+              <option>30h Semanais</option>
               <option>Folguista</option>
             </select>
 
