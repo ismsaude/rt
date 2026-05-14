@@ -103,7 +103,7 @@ export default function ResidentReports({ currentUser }) {
               <input 
                 type="date"
                 className="textarea-huge" 
-                style={{ height: '40px', padding: '0 12px', fontSize: '0.95rem', width: '100%', boxSizing: 'border-box', textAlign: 'left' }}
+                style={{ height: '40px', padding: '0 12px', fontSize: '0.95rem', width: '100%', boxSizing: 'border-box', textAlign: 'center', display: 'block', lineHeight: '38px' }}
                 value={selectedDateFilter}
                 onChange={(e) => setSelectedDateFilter(e.target.value)}
               />
@@ -111,7 +111,7 @@ export default function ResidentReports({ currentUser }) {
               <>
                 <select 
                   className="textarea-huge" 
-                  style={{ minHeight: '40px', padding: '8px', fontSize: '0.95rem', appearance: 'none', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}
+                  style={{ height: '40px', padding: '0 12px', fontSize: '0.95rem', appearance: 'none', cursor: 'pointer', width: '100%', boxSizing: 'border-box', textAlign: 'center' }}
                 >
                   <option>Maio / 2026</option>
                   <option>Abril / 2026</option>
