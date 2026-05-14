@@ -108,6 +108,10 @@ export default function ShiftHandover({ currentUser }) {
   };
 
   const handleSendClick = () => {
+    if (!generalNotes.trim()) {
+      alert("O Relato Geral do Plantão é obrigatório. Por favor, descreva as ocorrências do plantão antes de finalizar.");
+      return;
+    }
     setShowSignatureModal(true);
   };
 
@@ -180,10 +184,10 @@ export default function ShiftHandover({ currentUser }) {
 
       <div className="card" style={{ marginBottom: '24px', borderLeft: '4px solid var(--warning)' }}>
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.3rem', marginBottom: '8px' }}>
-          <AlertTriangle size={20} color="var(--warning)"/> Relato Geral do Plantão
+          <AlertTriangle size={20} color="var(--warning)"/> Relato Geral do Plantão <span style={{color: 'var(--danger)', fontSize: '1rem'}}>*</span>
         </h3>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '16px' }}>
-          Aconteceu algo anormal na casa? Algum incidente, quebra, visita, ou observação importante da rotina de hoje?
+          Aconteceu algo anormal na casa? Algum incidente, quebra, visita, ou observação importante da rotina de hoje? (Campo obrigatório)
         </p>
         <textarea 
           className="textarea-huge" 
