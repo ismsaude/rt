@@ -27,10 +27,19 @@ import DataRegistration from './components/admin/DataRegistration';
 import AccessManagement from './components/admin/AccessManagement';
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [role, setRole] = useState('admin');
-  const [activeTab, setActiveTab] = useState('cadastros');
+  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('rt_auth') === 'true');
+  const [currentUser, setCurrentUser] = useState(() => {
+    const user = localStorage.getItem('rt_user');
+    return user ? JSON.parse(user) : null;
+  });
+  const [role, setRole] = useState(() => localStorage.getItem('rt_role') || 'admin');
+  const [activeTab, setActiveTab] = useState(() => {
+    const savedRole = localStorage.getItem('rt_role');
+    if (!savedRole) return 'cadastros';
+    if (savedRole === 'admin') return 'cadastros';
+    if (savedRole === 'enfermeiro') return 'sinais';
+    return 'tarefas';
+  });
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [passwordMsg, setPasswordMsg] = useState('');
@@ -40,6 +49,10 @@ export default function App() {
     setCurrentUser(user);
     setIsAuthenticated(true);
     
+    localStorage.setItem('rt_auth', 'true');
+    localStorage.setItem('rt_user', JSON.stringify(user));
+    localStorage.setItem('rt_role', userRole);
+    
     if (userRole === 'admin') setActiveTab('cadastros');
     else if (userRole === 'enfermeiro') setActiveTab('sinais');
     else setActiveTab('tarefas');
@@ -48,6 +61,9 @@ export default function App() {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setCurrentUser(null);
+    localStorage.removeItem('rt_auth');
+    localStorage.removeItem('rt_user');
+    localStorage.removeItem('rt_role');
   };
 
   const handlePasswordChange = async () => {
