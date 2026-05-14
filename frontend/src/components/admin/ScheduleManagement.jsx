@@ -55,13 +55,13 @@ export default function ScheduleManagement() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h2 style={{ fontSize: '2rem', marginBottom: '8px' }}>Gestão de Escalas</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Visualize e aloque os funcionários para os próximos plantões.</p>
+          <h2 style={{ marginBottom: '4px' }}>Gestão de Escalas</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Visualize e aloque funcionários para plantões.</p>
         </div>
-        <button className="btn btn-primary" style={{ padding: '12px 24px', fontSize: '1rem' }} onClick={() => setShowAddModal(true)}>
-          <Plus size={20} />
+        <button className="btn btn-primary" style={{ padding: '8px 16px' }} onClick={() => setShowAddModal(true)}>
+          <Plus size={18} />
           Adicionar Plantão Avulso
         </button>
       </div>
@@ -125,14 +125,14 @@ export default function ScheduleManagement() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '24px' }}>
-        <div className="card" style={{ flex: 1, borderLeft: '4px solid var(--primary)' }}>
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Calendar color="var(--primary)" /> Mês Atual</h3>
-          <p style={{ fontSize: '2rem', fontWeight: 'bold' }}>Maio 2026</p>
+      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+        <div className="card" style={{ flex: '1 1 150px', borderLeft: '4px solid var(--primary)', padding: '16px' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem', marginBottom: '8px' }}><Calendar size={18} color="var(--primary)" /> Mês Atual</h3>
+          <p style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>Maio 2026</p>
         </div>
-        <div className="card" style={{ flex: 1, borderLeft: '4px solid var(--secondary)' }}>
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Users color="var(--secondary)" /> Equipe Ativa</h3>
-          <p style={{ fontSize: '2rem', fontWeight: 'bold' }}>{teamSize} Funcionários</p>
+        <div className="card" style={{ flex: '1 1 150px', borderLeft: '4px solid var(--secondary)', padding: '16px' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem', marginBottom: '8px' }}><Users size={18} color="var(--secondary)" /> Equipe Ativa</h3>
+          <p style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>{teamSize} Func.</p>
         </div>
       </div>
 

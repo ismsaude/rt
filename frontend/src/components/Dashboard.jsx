@@ -79,23 +79,23 @@ export default function Dashboard({ role }) {
       {role === 'admin' && (
         <div className="card" style={{ marginBottom: '24px', padding: '16px', background: 'var(--bg-secondary)' }}>
           <h3 style={{ fontSize: '1.1rem', marginBottom: '12px' }}>Cadastrar Nova Tarefa (Visão Diretoria)</h3>
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
             <input 
               type="text" 
-              placeholder="Descrição da Tarefa..." 
+              placeholder="Descrição..." 
               className="textarea-huge" 
-              style={{ flex: 2, minHeight: '40px', padding: '8px', fontSize: '1rem' }}
+              style={{ flex: '2 1 150px', height: '40px', padding: '0 12px', fontSize: '0.95rem', marginBottom: 0 }}
               value={newTaskTitle}
               onChange={(e) => setNewTaskTitle(e.target.value)}
             />
             <input 
               type="time" 
               className="textarea-huge" 
-              style={{ flex: 1, minHeight: '40px', padding: '8px', fontSize: '1rem' }}
+              style={{ flex: '1 1 80px', height: '40px', padding: '0 12px', fontSize: '0.95rem', marginBottom: 0 }}
               value={newTaskTime}
               onChange={(e) => setNewTaskTime(e.target.value)}
             />
-            <button className="btn btn-primary" onClick={addTask}>Cadastrar</button>
+            <button className="btn btn-primary" style={{ height: '40px', padding: '0 16px', flex: '1 1 100px' }} onClick={addTask}>Cadastrar</button>
           </div>
         </div>
       )}

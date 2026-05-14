@@ -103,7 +103,7 @@ export default function ResidentReports({ currentUser }) {
               <input 
                 type="date"
                 className="textarea-huge" 
-                style={{ minHeight: '40px', padding: '8px', fontSize: '0.95rem', width: '100%', boxSizing: 'border-box' }}
+                style={{ height: '40px', padding: '0 12px', fontSize: '0.95rem', width: '100%', boxSizing: 'border-box', textAlign: 'left' }}
                 value={selectedDateFilter}
                 onChange={(e) => setSelectedDateFilter(e.target.value)}
               />
@@ -125,20 +125,20 @@ export default function ResidentReports({ currentUser }) {
         {/* Visualização do Relatório */}
         <div className="print-full-width" style={{ flex: 1 }}>
           {/* Tabs */}
-          <div className="print-hide" style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
+          <div className="print-hide" style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
             <button 
               className={`btn ${activeTab === 'diario' ? 'btn-primary' : ''}`} 
-              style={{ background: activeTab !== 'diario' ? 'white' : '', border: '1px solid var(--border)' }} 
+              style={{ background: activeTab !== 'diario' ? 'white' : '', border: '1px solid var(--border)', flex: '1 1 150px' }} 
               onClick={() => setActiveTab('diario')}
             >
-              <Calendar size={20}/> Visão Diária Geral
+              <Calendar size={18}/> Visão Diária Geral
             </button>
             <button 
               className={`btn ${activeTab === 'mensal' ? 'btn-primary' : ''}`} 
-              style={{ background: activeTab !== 'mensal' ? 'white' : '', border: '1px solid var(--border)' }} 
+              style={{ background: activeTab !== 'mensal' ? 'white' : '', border: '1px solid var(--border)', flex: '1 1 150px' }} 
               onClick={() => setActiveTab('mensal')}
             >
-              <FileText size={20}/> Relatório Mensal Individual
+              <FileText size={18}/> Relatório Mensal Individual
             </button>
           </div>
 

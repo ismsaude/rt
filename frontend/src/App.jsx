@@ -138,7 +138,10 @@ export default function App() {
       <div className="admin-container">
         <aside className="sidebar">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="sidebar-header-mobile">
-            <div className="sidebar-title" style={{ marginBottom: 0, fontWeight: 700, color: 'var(--primary-dark)' }}>Aurean RT - Admin</div>
+            <div className="sidebar-title" style={{ marginBottom: 0, fontWeight: 700, color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <img src="/logo.png" alt="Logo" style={{ height: '28px', width: 'auto', borderRadius: '4px' }} onError={(e) => e.target.style.display='none'} />
+              Aurean RT - Admin
+            </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button className="btn mobile-logout-only" style={{ padding: '8px', background: 'transparent', border: '1px solid var(--border)' }} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
                 {isMobileMenuOpen ? <X size={20} /> : <MenuIcon size={20} />}
@@ -211,11 +214,14 @@ export default function App() {
   return (
     <div className="mobile-container">
       <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1 style={{ fontSize: '1.1rem', marginBottom: '4px' }}>Aurean Residência Terapêutica</h1>
-          <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)' }}>
-            Olá, {currentUser?.name?.split(' ')[0] || 'Equipe'}
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <img src="/logo.png" alt="Logo" style={{ height: '40px', width: 'auto', borderRadius: '8px', background: 'white', padding: '2px' }} onError={(e) => e.target.style.display='none'} />
+          <div>
+            <h1 style={{ fontSize: '1.1rem', marginBottom: '4px' }}>Aurean Residência Terapêutica</h1>
+            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)' }}>
+              Olá, {currentUser?.name?.split(' ')[0] || 'Equipe'}
+            </p>
+          </div>
         </div>
         
         <div style={{ display: 'flex', gap: '12px' }}>
