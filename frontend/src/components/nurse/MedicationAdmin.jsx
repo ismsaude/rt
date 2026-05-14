@@ -1,14 +1,81 @@
 import React, { useState } from 'react';
-import { Pill, CheckCircle2, XCircle, Send } from 'lucide-react';
+import { Pill, CheckCircle2, XCircle, Send, Clock, AlertTriangle } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 export default function MedicationAdmin() {
   const [meds, setMeds] = useState([]);
+  const [currentTimeFilter, setCurrentTimeFilter] = useState('');
+  const [availableTimes, setAvailableTimes] = useState([]);
+  const [stockAlert, setStockAlert] = useState(null);
 
   const [refusingId, setRefusingId] = useState(null);
   const [justification, setJustification] = useState('');
 
-  const handleAdminister = (id) => {
+  useEffect(() => {
+    loadMedications();
+  }, []);
+
+  const loadMedications = async () => {
+    // Busca do banco
+    const { data } = await supabase.from('Medication').select('*');
+    const localPrescriptions = JSON.parse(localStorage.getItem('rt_prescriptions') || '{}');
+    const localStock = JSON.parse(localStorage.getItem('rt_stock') || '[]');
+
+    let allMeds = [];
+    let timesSet = new Set();
+
+    // Se houver no localStock (que contém os horários simulados criados no PharmacyStock)
+    if (localStock.length > 0) {
+      localStock.forEach(item => {
+        if (item.times) {
+          item.times.forEach(t => {
+            timesSet.add(t);
+            allMeds.push({
+              id: `${item.id}-${t}`,
+              realId: item.id,
+              name: item.name,
+              resident: item.resident,
+              time: t,
+              status: 'pending',
+              qty: item.qty,
+              minQty: item.minQty
+            });
+          });
+        }
+      });
+    }
+
+    const timesArray = Array.from(timesSet).sort();
+    setAvailableTimes(timesArray);
+    if (timesArray.length > 0) setCurrentTimeFilter(timesArray[0]);
+
+    setMeds(allMeds);
+  };
+
+  const handleAdminister = async (id, realId) => {
     setMeds(meds.map(m => m.id === id ? { ...m, status: 'administered' } : m));
+    
+    // Desconta do estoque
+    const localStock = JSON.parse(localStorage.getItem('rt_stock') || '[]');
+    const stockItemIndex = localStock.findIndex(s => s.id === realId);
+    
+    if (stockItemIndex >= 0) {
+      localStock[stockItemIndex].qty -= 1;
+      const newQty = localStock[stockItemIndex].qty;
+      const minQty = localStock[stockItemIndex].minQty;
+      
+      if (newQty <= minQty) {
+        setStockAlert(`Atenção: O estoque de ${localStock[stockItemIndex].name} está acabando! Restam apenas ${newQty} unidades.`);
+        setTimeout(() => setStockAlert(null), 5000);
+      }
+      
+      localStorage.setItem('rt_stock', JSON.stringify(localStock));
+
+      // Tenta atualizar no Supabase (se for numérico)
+      if (!isNaN(parseInt(realId))) {
+        await supabase.from('Medication').update({ stock: newQty }).eq('id', realId);
+      }
+    }
   };
 
   const handleRefuseClick = (id) => {
@@ -25,12 +92,38 @@ export default function MedicationAdmin() {
     setRefusingId(null);
   };
 
+  const filteredMeds = meds.filter(m => m.time === currentTimeFilter);
+
   return (
     <div>
-      <h2>Medicações do Horário (14:00)</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2>Check-list de Medicações</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Clock size={20} color="var(--primary)" />
+          <select 
+            className="textarea-huge" 
+            style={{ minHeight: '40px', padding: '8px', fontSize: '1.1rem', width: 'auto' }}
+            value={currentTimeFilter}
+            onChange={(e) => setCurrentTimeFilter(e.target.value)}
+          >
+            {availableTimes.length === 0 && <option>Sem horários</option>}
+            {availableTimes.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
 
-      {meds.map(med => (
-        <div key={med.id} className="card" style={{ borderLeft: med.status === 'administered' ? '6px solid var(--secondary)' : med.status === 'refused' ? '6px solid var(--danger)' : '6px solid var(--warning)' }}>
+      {stockAlert && (
+        <div className="card" style={{ background: 'var(--danger-light)', borderLeft: '6px solid var(--danger)', padding: '16px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <AlertTriangle size={24} color="var(--danger)" />
+          <span style={{ color: 'var(--danger)', fontWeight: 'bold', fontSize: '1.1rem' }}>{stockAlert}</span>
+        </div>
+      )}
+
+      {filteredMeds.length === 0 ? (
+        <p style={{ color: 'var(--text-muted)' }}>Nenhuma medicação cadastrada ou agendada para este horário.</p>
+      ) : (
+        filteredMeds.map(med => (
+          <div key={med.id} className="card" style={{ borderLeft: med.status === 'administered' ? '6px solid var(--secondary)' : med.status === 'refused' ? '6px solid var(--danger)' : '6px solid var(--warning)' }}>
           
           <div style={{ marginBottom: '16px' }}>
             <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)', marginBottom: '4px' }}>{med.resident}</h3>
@@ -42,8 +135,8 @@ export default function MedicationAdmin() {
 
           {med.status === 'pending' && refusingId !== med.id && (
             <div style={{ display: 'flex', gap: '12px' }}>
-              <button className="btn btn-success" style={{ flex: 1, padding: '16px', fontSize: '1.1rem' }} onClick={() => handleAdminister(med.id)}>
-                <CheckCircle2 size={24} /> Dar
+              <button className="btn btn-success" style={{ flex: 1, padding: '16px', fontSize: '1.1rem' }} onClick={() => handleAdminister(med.id, med.realId)}>
+                <CheckCircle2 size={24} /> Dar Remédio
               </button>
               <button className="btn" style={{ flex: 1, padding: '16px', fontSize: '1.1rem', backgroundColor: 'var(--danger-light)', color: 'var(--danger)', border: '2px solid var(--danger)' }} onClick={() => handleRefuseClick(med.id)}>
                 <XCircle size={24} /> Recusou
@@ -83,7 +176,8 @@ export default function MedicationAdmin() {
             </div>
           )}
         </div>
-      ))}
+        ))
+      )}
     </div>
   );
 }
