@@ -40,10 +40,8 @@ export default function ResidentReports({ currentUser }) {
     if (shiftData) {
       setShiftReports(shiftData);
       
-      // Extrair datas únicas no formato YYYY-MM-DD
-      const dates = [...new Set(shiftData.map(r => r.date.split('T')[0]))];
-      setUniqueDates(dates);
-      if (dates.length > 0) setSelectedDateFilter(dates[0]);
+      const today = new Date().toISOString().split('T')[0];
+      setSelectedDateFilter(today);
     }
   };
 
@@ -101,35 +99,26 @@ export default function ResidentReports({ currentUser }) {
 
           <label className="input-label" style={{ fontSize: '1rem' }}>{activeTab === 'diario' ? 'Data do Plantão' : 'Período Base'}</label>
           <div style={{ position: 'relative', marginBottom: '20px' }}>
-            <select 
-              className="textarea-huge" 
-              style={{ minHeight: '50px', padding: '12px', fontSize: '1rem', appearance: 'none', cursor: 'pointer' }}
-              value={activeTab === 'diario' ? selectedDateFilter : undefined}
-              onChange={(e) => activeTab === 'diario' ? setSelectedDateFilter(e.target.value) : null}
-            >
-              {activeTab === 'diario' ? (
-                uniqueDates.length > 0 ? (
-                  uniqueDates.map(dateStr => {
-                    // criar data local para exibir corretamente no dropdown (compensar timezone)
-                    const [y, m, d] = dateStr.split('-');
-                    const localDate = new Date(y, m - 1, d).toLocaleDateString('pt-BR');
-                    return (
-                      <option key={dateStr} value={dateStr}>
-                        {localDate}
-                      </option>
-                    )
-                  })
-                ) : (
-                  <option value="">Nenhum plantão registrado</option>
-                )
-              ) : (
-                <>
+            {activeTab === 'diario' ? (
+              <input 
+                type="date"
+                className="textarea-huge" 
+                style={{ minHeight: '50px', padding: '12px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }}
+                value={selectedDateFilter}
+                onChange={(e) => setSelectedDateFilter(e.target.value)}
+              />
+            ) : (
+              <>
+                <select 
+                  className="textarea-huge" 
+                  style={{ minHeight: '50px', padding: '12px', fontSize: '1rem', appearance: 'none', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}
+                >
                   <option>Maio / 2026</option>
                   <option>Abril / 2026</option>
-                </>
-              )}
-            </select>
-            <ChevronDown size={20} style={{ position: 'absolute', right: '16px', top: '16px', color: 'var(--text-muted)' }}/>
+                </select>
+                <ChevronDown size={20} style={{ position: 'absolute', right: '16px', top: '16px', color: 'var(--text-muted)' }}/>
+              </>
+            )}
           </div>
         </div>
 
@@ -191,37 +180,40 @@ export default function ResidentReports({ currentUser }) {
                       </span>
                     </div>
                     
-                    <div style={{ marginBottom: '32px' }}>
-                      <h4 style={{ color: 'var(--primary)', marginBottom: '16px', fontSize: '1.2rem' }}>Ocorrências por Morador</h4>
-                      
-                      {residents.map((res, idx) => {
-                        const resData = report.reports?.[res.id];
-                        if (!resData) return null;
-
-                        return (
-                          <div key={idx} className="print-avoid-break" style={{ background: 'var(--background)', padding: '16px', borderRadius: '8px', marginBottom: '12px' }}>
-                            <h5 style={{ fontSize: '1.1rem', marginBottom: '8px' }}>{res.name}</h5>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                              <div><strong>Higiene:</strong> {resData.hygiene}</div>
-                              <div><strong>Alimentação:</strong> {resData.food}</div>
-                              <div><strong>Medicação:</strong> {resData.meds}</div>
-                            </div>
-                            {resData.notes && (
-                              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border)', fontSize: '0.9rem' }}>
-                                <strong>Obs:</strong> {resData.notes}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    <div className="print-avoid-break">
-                      <h4 style={{ color: 'var(--warning)', marginBottom: '16px', fontSize: '1.2rem' }}>Relato Geral do Plantão</h4>
-                      <div style={{ background: 'rgba(245, 158, 11, 0.1)', borderLeft: '4px solid var(--warning)', padding: '16px', borderRadius: '0 8px 8px 0', color: 'var(--text-main)', lineHeight: '1.6', marginBottom: '32px' }}>
+                    <div className="print-avoid-break" style={{ marginBottom: '24px' }}>
+                      <h4 style={{ color: 'var(--warning)', marginBottom: '8px', fontSize: '1.2rem' }}>Relato Geral do Plantão</h4>
+                      <div style={{ background: 'rgba(245, 158, 11, 0.1)', borderLeft: '4px solid var(--warning)', padding: '16px', borderRadius: '0 8px 8px 0', color: 'var(--text-main)', lineHeight: '1.6' }}>
                         <strong>Relato registrado:</strong> {report.general_notes || 'Sem relato geral para este plantão.'}
                       </div>
                     </div>
+
+                    <details style={{ marginBottom: '32px', cursor: 'pointer' }} className="print-avoid-break">
+                      <summary style={{ fontSize: '1.1rem', color: 'var(--primary)', fontWeight: 'bold', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                        Ver ocorrências detalhadas por morador
+                      </summary>
+                      <div style={{ marginTop: '16px' }}>
+                        {residents.map((res, idx) => {
+                          const resData = report.reports?.[res.id];
+                          if (!resData) return null;
+
+                          return (
+                            <div key={idx} style={{ background: 'var(--background)', padding: '16px', borderRadius: '8px', marginBottom: '12px' }}>
+                              <h5 style={{ fontSize: '1.1rem', marginBottom: '8px' }}>{res.name}</h5>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                                <div><strong>Higiene:</strong> {resData.hygiene}</div>
+                                <div><strong>Alimentação:</strong> {resData.food}</div>
+                                <div><strong>Medicação:</strong> {resData.meds}</div>
+                              </div>
+                              {resData.notes && (
+                                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border)', fontSize: '0.9rem' }}>
+                                  <strong>Obs:</strong> {resData.notes}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </details>
 
                     <div className="print-avoid-break" style={{ padding: '16px', background: 'var(--background)', borderRadius: '8px', border: '1px dashed var(--border)' }}>
                       <p style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>

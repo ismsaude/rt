@@ -6,9 +6,16 @@ export default function VitalsControl() {
   const [selectedResident, setSelectedResident] = useState(null);
   const [saved, setSaved] = useState(false);
   const [vitals, setVitals] = useState({
-    bp: '', glucose: '', temp: '', spo2: ''
+    bp: '', glucose: '', temp: '', spo2: '', notes: ''
   });
   const [residents, setResidents] = useState([]);
+  const [history, setHistory] = useState([]);
+
+  const fetchHistory = async () => {
+    // Attempt to fetch from a generic 'VitalSigns' table
+    const { data } = await supabase.from('VitalSigns').select('*').order('created_at', { ascending: false }).limit(20);
+    if (data) setHistory(data);
+  };
 
   useEffect(() => {
     const fetchResidents = async () => {
@@ -18,15 +25,33 @@ export default function VitalsControl() {
       }
     };
     fetchResidents();
+    fetchHistory();
   }, []);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => {
-      setSaved(false);
-      setSelectedResident(null);
-      setVitals({ bp: '', glucose: '', temp: '', spo2: '' });
-    }, 2000);
+  const handleSave = async () => {
+    // Save to Supabase
+    const { error } = await supabase.from('VitalSigns').insert([{
+      resident_id: selectedResident.id,
+      resident_name: selectedResident.name,
+      bp: vitals.bp,
+      glucose: vitals.glucose,
+      temp: vitals.temp,
+      spo2: vitals.spo2,
+      notes: vitals.notes,
+      created_at: new Date().toISOString()
+    }]);
+
+    if (!error) {
+      fetchHistory();
+      setSaved(true);
+      setTimeout(() => {
+        setSaved(false);
+        setSelectedResident(null);
+        setVitals({ bp: '', glucose: '', temp: '', spo2: '', notes: '' });
+      }, 2000);
+    } else {
+      alert("Erro ao salvar sinais: " + error.message);
+    }
   };
 
   if (saved) {
@@ -52,6 +77,41 @@ export default function VitalsControl() {
             <Activity color="var(--primary)" />
           </div>
         ))}
+
+        <div style={{ marginTop: '48px', marginBottom: '80px' }}>
+          <h3 style={{ borderBottom: '2px solid var(--border)', paddingBottom: '8px', marginBottom: '16px', color: 'var(--primary-dark)' }}>
+            Últimas Aferições
+          </h3>
+          {history.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)' }}>Nenhuma aferição recente.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {history.map(record => (
+                <div key={record.id} className="card" style={{ padding: '16px', background: 'var(--bg-secondary)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <div style={{ fontWeight: 'bold', color: 'var(--primary)' }}>
+                      {record.resident_name || 'Paciente'}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      {record.created_at ? new Date(record.created_at).toLocaleString('pt-BR') : ''}
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.9rem', marginBottom: '8px' }}>
+                    <div><strong>PA:</strong> {record.bp || '-'}</div>
+                    <div><strong>Glicemia:</strong> {record.glucose || '-'}</div>
+                    <div><strong>Temp:</strong> {record.temp || '-'}</div>
+                    <div><strong>SpO2:</strong> {record.spo2 || '-'}</div>
+                  </div>
+                  {record.notes && (
+                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border)', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                      <strong>Obs:</strong> {record.notes}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -100,6 +160,16 @@ export default function VitalsControl() {
             <input type="number" placeholder="98" className="textarea-huge" style={{ minHeight: '60px', height: '60px', marginBottom: '16px' }} value={vitals.spo2} onChange={(e) => setVitals({...vitals, spo2: e.target.value})} />
           </div>
         </div>
+
+        <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+          Anotações / Observações (Opcional)
+        </label>
+        <textarea 
+          placeholder="Alguma observação importante sobre o paciente?" 
+          className="textarea-huge" 
+          style={{ minHeight: '80px', marginBottom: '24px', padding: '12px', fontSize: '1rem' }}
+          value={vitals.notes} onChange={(e) => setVitals({...vitals, notes: e.target.value})} 
+        />
 
         <button className="btn-massive btn-primary" onClick={handleSave}>
           <Save size={28} />
