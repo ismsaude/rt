@@ -151,9 +151,9 @@ export default function DataRegistration() {
 
   return (
     <div>
-      <div style={{ marginBottom: '32px' }}>
-        <h2 style={{ fontSize: '2rem', marginBottom: '8px' }}>Central de Cadastros e Gestão</h2>
-        <p style={{ color: 'var(--text-muted)' }}>Gerencie moradores, medicamentos e itens de despensa.</p>
+      <div style={{ marginBottom: '24px' }}>
+        <h2 style={{ marginBottom: '4px' }}>Central de Cadastros e Gestão</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Gerencie moradores, medicamentos e itens de despensa.</p>
       </div>
 
       {/* Tabs de Seleção */}
