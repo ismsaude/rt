@@ -85,11 +85,11 @@ export default function Programmation({ role }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <div>
-          <h2 style={{ marginBottom: '8px' }}>Agenda e Programação</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>
-            Gerencie consultas, exames e atividades externas dos moradores.
+          <h2 style={{ marginBottom: '4px', fontSize: '1.4rem' }}>Agenda / Programação</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
+            Consultas e eventos dos moradores.
           </p>
         </div>
         {(role === 'admin' || role === 'enfermeiro') && (
@@ -100,30 +100,30 @@ export default function Programmation({ role }) {
         )}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '80px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '80px' }}>
         {events.length === 0 ? (
           <p style={{ color: 'var(--text-muted)' }}>Nenhum compromisso agendado.</p>
         ) : (
           events.map(ev => {
             const evDate = new Date(`${ev.date}T00:00:00`).toLocaleDateString('pt-BR');
             return (
-              <div key={ev.id} className="card" style={{ borderLeft: '6px solid var(--primary)', padding: '20px' }}>
+              <div key={ev.id} className="card" style={{ borderLeft: '4px solid var(--primary)', padding: '12px 16px', marginBottom: '0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <h3 style={{ fontSize: '1.4rem', marginBottom: '8px', color: 'var(--text-main)' }}>{ev.title}</h3>
-                    <p style={{ fontSize: '1.1rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                      <User size={16} /> {ev.resident_name}
+                    <h3 style={{ fontSize: '1.2rem', marginBottom: '6px', color: 'var(--text-main)' }}>{ev.title}</h3>
+                    <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                      <User size={14} /> {ev.resident_name}
                     </p>
-                    <p style={{ fontSize: '1.1rem', color: 'var(--primary-dark)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                      <CalendarIcon size={16} /> {evDate} <Clock size={16} style={{ marginLeft: '8px' }} /> {ev.time}
+                    <p style={{ fontSize: '0.95rem', color: 'var(--primary-dark)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                      <CalendarIcon size={14} /> {evDate} <Clock size={14} style={{ marginLeft: '8px' }} /> {ev.time}
                     </p>
                     {ev.location && (
-                      <p style={{ fontSize: '1rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px' }}>
-                        <MapPin size={16} /> {ev.location}
+                      <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px' }}>
+                        <MapPin size={14} /> {ev.location}
                       </p>
                     )}
                     {ev.notes && (
-                      <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border)', fontSize: '1rem', color: 'var(--text-main)' }}>
+                      <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border)', fontSize: '0.9rem', color: 'var(--text-main)' }}>
                         <strong>Obs:</strong> {ev.notes}
                       </div>
                     )}
@@ -132,11 +132,11 @@ export default function Programmation({ role }) {
                   {(role === 'admin' || role === 'enfermeiro') && (
                     <button 
                       className="btn" 
-                      style={{ background: 'transparent', color: 'var(--danger)', padding: '8px', border: '1px solid var(--border)' }}
+                      style={{ background: 'transparent', color: 'var(--danger)', padding: '6px', border: '1px solid var(--border)' }}
                       onClick={() => handleDelete(ev.id)}
                       title="Excluir"
                     >
-                      <Trash2 size={20} />
+                      <Trash2 size={18} />
                     </button>
                   )}
                 </div>

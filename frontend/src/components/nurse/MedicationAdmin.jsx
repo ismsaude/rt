@@ -47,7 +47,10 @@ export default function MedicationAdmin() {
 
     const timesArray = Array.from(timesSet).sort();
     setAvailableTimes(timesArray);
-    if (timesArray.length > 0) setCurrentTimeFilter(timesArray[0]);
+    if (timesArray.length > 0 && !currentTimeFilter) {
+      // Opcionalmente podemos selecionar o primeiro, ou exibir todos
+      setCurrentTimeFilter('Todos');
+    }
 
     setMeds(allMeds);
   };
@@ -92,90 +95,122 @@ export default function MedicationAdmin() {
     setRefusingId(null);
   };
 
-  const filteredMeds = meds.filter(m => m.time === currentTimeFilter);
+  const filteredMeds = currentTimeFilter === 'Todos' || !currentTimeFilter 
+    ? meds 
+    : meds.filter(m => m.time === currentTimeFilter);
+
+  // Agrupa os medicamentos filtrados por morador
+  const groupedMeds = filteredMeds.reduce((acc, med) => {
+    if (!acc[med.resident]) acc[med.resident] = [];
+    acc[med.resident].push(med);
+    return acc;
+  }, {});
+
+  // Ordena os medicamentos de cada morador por horário
+  Object.keys(groupedMeds).forEach(res => {
+    groupedMeds[res].sort((a, b) => a.time.localeCompare(b.time));
+  });
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2>Check-list de Medicações</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h2 style={{ fontSize: '1.4rem' }}>Check-list Medicações</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Clock size={20} color="var(--primary)" />
+          <Clock size={16} color="var(--primary)" />
           <select 
             className="textarea-huge" 
-            style={{ minHeight: '40px', padding: '8px', fontSize: '1.1rem', width: 'auto' }}
+            style={{ minHeight: '36px', padding: '6px 12px', fontSize: '0.95rem', width: 'auto' }}
             value={currentTimeFilter}
             onChange={(e) => setCurrentTimeFilter(e.target.value)}
           >
-            {availableTimes.length === 0 && <option>Sem horários</option>}
+            <option value="Todos">Todos os horários</option>
             {availableTimes.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
       </div>
 
       {stockAlert && (
-        <div className="card" style={{ background: 'var(--danger-light)', borderLeft: '6px solid var(--danger)', padding: '16px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <AlertTriangle size={24} color="var(--danger)" />
-          <span style={{ color: 'var(--danger)', fontWeight: 'bold', fontSize: '1.1rem' }}>{stockAlert}</span>
+        <div className="card" style={{ background: 'var(--danger-light)', borderLeft: '4px solid var(--danger)', padding: '12px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <AlertTriangle size={20} color="var(--danger)" />
+          <span style={{ color: 'var(--danger)', fontWeight: 'bold', fontSize: '0.95rem' }}>{stockAlert}</span>
         </div>
       )}
 
-      {filteredMeds.length === 0 ? (
-        <p style={{ color: 'var(--text-muted)' }}>Nenhuma medicação cadastrada ou agendada para este horário.</p>
+      {Object.keys(groupedMeds).length === 0 ? (
+        <p style={{ color: 'var(--text-muted)' }}>Nenhuma medicação encontrada para o filtro selecionado.</p>
       ) : (
-        filteredMeds.map(med => (
-          <div key={med.id} className="card" style={{ borderLeft: med.status === 'administered' ? '6px solid var(--secondary)' : med.status === 'refused' ? '6px solid var(--danger)' : '6px solid var(--warning)' }}>
-          
-          <div style={{ marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)', marginBottom: '4px' }}>{med.resident}</h3>
-            <p style={{ fontSize: '1.2rem', color: 'var(--primary-dark)', fontWeight: '600' }}>
-              <Pill size={20} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
-              {med.name}
-            </p>
+        Object.keys(groupedMeds).map(residentName => (
+          <div key={residentName} className="card" style={{ padding: '0', marginBottom: '16px', overflow: 'hidden' }}>
+            <div style={{ backgroundColor: 'var(--primary-light)', padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ fontSize: '1.2rem', color: 'var(--primary-dark)', margin: 0 }}>{residentName}</h3>
+            </div>
+            
+            <div style={{ padding: '12px 16px' }}>
+              {groupedMeds[residentName].map((med, idx) => (
+                <div key={med.id} style={{ 
+                  paddingBottom: idx === groupedMeds[residentName].length - 1 ? '0' : '12px', 
+                  marginBottom: idx === groupedMeds[residentName].length - 1 ? '0' : '12px', 
+                  borderBottom: idx === groupedMeds[residentName].length - 1 ? 'none' : '1px solid var(--border)' 
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <p style={{ fontSize: '1rem', color: 'var(--text-main)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Clock size={14} color="var(--primary)" /> {med.time}
+                        </p>
+                        <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                          <Pill size={14} /> {med.name}
+                        </p>
+                      </div>
+
+                      {med.status === 'administered' && (
+                        <span style={{ color: 'var(--secondary)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCircle2 size={16} /> Concluído
+                        </span>
+                      )}
+
+                      {med.status === 'refused' && (
+                        <span style={{ color: 'var(--danger)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <XCircle size={16} /> Recusado
+                        </span>
+                      )}
+                    </div>
+
+                    {med.status === 'pending' && refusingId !== med.id && (
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                        <button className="btn btn-success" style={{ flex: 1, padding: '8px', fontSize: '0.9rem' }} onClick={() => handleAdminister(med.id, med.realId)}>
+                          <CheckCircle2 size={16} /> Dar Remédio
+                        </button>
+                        <button className="btn" style={{ flex: 1, padding: '8px', fontSize: '0.9rem', backgroundColor: 'var(--danger-light)', color: 'var(--danger)', border: '1px solid var(--danger)' }} onClick={() => handleRefuseClick(med.id)}>
+                          <XCircle size={16} /> Recusou
+                        </button>
+                      </div>
+                    )}
+                    
+                    {refusingId === med.id && (
+                      <div style={{ marginTop: '8px', background: 'var(--background)', padding: '12px', borderRadius: '8px' }}>
+                        <textarea 
+                          className="textarea-huge" 
+                          style={{ minHeight: '60px', marginBottom: '8px', fontSize: '0.9rem', padding: '8px' }}
+                          placeholder="Motivo da recusa..."
+                          value={justification}
+                          onChange={(e) => setJustification(e.target.value)}
+                        />
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button className="btn" style={{ flex: 1, padding: '8px', fontSize: '0.9rem', backgroundColor: 'white', border: '1px solid var(--border)' }} onClick={() => setRefusingId(null)}>Cancelar</button>
+                          <button className="btn btn-primary" style={{ flex: 1, padding: '8px', fontSize: '0.9rem' }} onClick={confirmRefusal}><Send size={16}/> Confirmar</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {med.status === 'refused' && (
+                      <p style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Motivo: {med.justification}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-
-          {med.status === 'pending' && refusingId !== med.id && (
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button className="btn btn-success" style={{ flex: 1, padding: '16px', fontSize: '1.1rem' }} onClick={() => handleAdminister(med.id, med.realId)}>
-                <CheckCircle2 size={24} /> Dar Remédio
-              </button>
-              <button className="btn" style={{ flex: 1, padding: '16px', fontSize: '1.1rem', backgroundColor: 'var(--danger-light)', color: 'var(--danger)', border: '2px solid var(--danger)' }} onClick={() => handleRefuseClick(med.id)}>
-                <XCircle size={24} /> Recusou
-              </button>
-            </div>
-          )}
-
-          {refusingId === med.id && (
-            <div style={{ marginTop: '16px', background: 'var(--background)', padding: '16px', borderRadius: '12px' }}>
-              <label className="input-label" style={{ fontSize: '1.1rem' }}>Por que recusou?</label>
-              <textarea 
-                className="textarea-huge" 
-                style={{ minHeight: '80px', marginBottom: '12px', fontSize: '1.1rem' }}
-                placeholder="Ex: Paciente dormindo ou agitado..."
-                value={justification}
-                onChange={(e) => setJustification(e.target.value)}
-              />
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button className="btn" style={{ flex: 1, backgroundColor: 'white', border: '1px solid var(--border)' }} onClick={() => setRefusingId(null)}>Cancelar</button>
-                <button className="btn btn-primary" style={{ flex: 1 }} onClick={confirmRefusal}><Send size={20}/> Confirmar</button>
-              </div>
-            </div>
-          )}
-
-          {med.status === 'administered' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--secondary)', fontSize: '1.2rem', fontWeight: 'bold' }}>
-              <CheckCircle2 size={24} /> Administrado com sucesso
-            </div>
-          )}
-
-          {med.status === 'refused' && (
-            <div style={{ color: 'var(--danger)', fontSize: '1.1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', marginBottom: '8px' }}>
-                <XCircle size={24} /> Recusado pelo morador
-              </div>
-              <p style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>Motivo: {med.justification}</p>
-            </div>
-          )}
-        </div>
         ))
       )}
     </div>
