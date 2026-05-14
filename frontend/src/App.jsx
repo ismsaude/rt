@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   CheckSquare, Utensils, ClipboardEdit, 
   Activity, Pill, PackageOpen, UserCircle,
-  CalendarDays, ShoppingCart, FileText, Database, Shield, LogOut, Key
+  CalendarDays, ShoppingCart, FileText, Database, Shield, LogOut, Key, Calendar
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
@@ -17,6 +17,7 @@ import DailyMenu from './components/DailyMenu';
 import VitalsControl from './components/nurse/VitalsControl';
 import MedicationAdmin from './components/nurse/MedicationAdmin';
 import PharmacyStock from './components/nurse/PharmacyStock';
+import Programmation from './components/nurse/Programmation';
 
 // Admin Components
 import ScheduleManagement from './components/admin/ScheduleManagement';
@@ -81,6 +82,7 @@ export default function App() {
         case 'sinais': return <VitalsControl />;
         case 'medicacoes': return <MedicationAdmin />;
         case 'estoque': return <PharmacyStock />;
+        case 'programacao': return <Programmation role={role} />;
         default: return <VitalsControl />;
       }
     } else {
@@ -98,6 +100,7 @@ export default function App() {
         case 'sinais': return <VitalsControl />;
         case 'medicacoes': return <MedicationAdmin />;
         case 'estoque': return <PharmacyStock />;
+        case 'programacao': return <Programmation role={role} />;
         default: return <DataRegistration />;
       }
     }
@@ -157,6 +160,9 @@ export default function App() {
             </a>
             <a className={`sidebar-link ${activeTab === 'estoque' ? 'active' : ''}`} onClick={() => setActiveTab('estoque')}>
               <PackageOpen size={20} /> Estoque Enfermagem
+            </a>
+            <a className={`sidebar-link ${activeTab === 'programacao' ? 'active' : ''}`} onClick={() => setActiveTab('programacao')}>
+              <Calendar size={20} /> Agenda / Prog.
             </a>
           </nav>
 
@@ -257,6 +263,9 @@ export default function App() {
           </a>
           <a href="#" className={`nav-item ${activeTab === 'estoque' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('estoque'); }}>
             <PackageOpen /><span>Estoque</span>
+          </a>
+          <a href="#" className={`nav-item ${activeTab === 'programacao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('programacao'); }}>
+            <Calendar /><span>Agenda</span>
           </a>
         </nav>
       )}
