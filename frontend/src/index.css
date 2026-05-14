@@ -176,23 +176,23 @@ body {
     display: none !important;
   }
   .sidebar-menu {
-    flex-direction: row;
-    overflow-x: auto;
+    flex-direction: column;
+    overflow-x: hidden;
     gap: 8px;
-    padding-bottom: 4px;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    padding-bottom: 16px;
+  }
+  .mobile-hidden {
+    display: none !important;
   }
   .sidebar-menu::-webkit-scrollbar {
     display: none;
   }
   .sidebar-link {
-    white-space: nowrap;
-    padding: 8px 12px;
+    padding: 10px 16px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    font-size: 0.9rem;
+    border-radius: 12px;
+    font-size: 0.95rem;
   }
   .sidebar-link.active {
     background: var(--primary);

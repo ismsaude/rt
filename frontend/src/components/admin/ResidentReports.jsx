@@ -61,10 +61,10 @@ export default function ResidentReports({ currentUser }) {
 
   return (
     <div>
-      <div className="print-hide" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+      <div className="print-hide" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h2 style={{ fontSize: '2rem', marginBottom: '8px' }}>Evolução e Relatórios</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Acompanhe as anotações diárias e monte o relatório mensal.</p>
+          <h2 style={{ marginBottom: '4px' }}>Evolução e Relatórios</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Acompanhe e emita os relatórios.</p>
         </div>
         {activeTab === 'mensal' && !isEditing && (
           <button className="btn btn-primary" style={{ padding: '12px 24px', fontSize: '1rem' }} onClick={() => window.print()}>
@@ -74,17 +74,17 @@ export default function ResidentReports({ currentUser }) {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* Filtros */}
-        <div className="card print-hide" style={{ width: '300px', flexShrink: 0 }}>
+        <div className="card print-hide" style={{ width: '100%', maxWidth: '300px', flexShrink: 0 }}>
           <h3 style={{ marginBottom: '16px', fontSize: '1.2rem' }}>Filtros</h3>
           {activeTab === 'mensal' && (
             <>
-              <label className="input-label" style={{ fontSize: '1rem' }}>Morador (Para Relatório Mensal)</label>
-              <div style={{ position: 'relative', marginBottom: '20px' }}>
+              <label className="input-label" style={{ fontSize: '0.95rem' }}>Morador (Mensal)</label>
+              <div style={{ position: 'relative', marginBottom: '16px' }}>
                 <select 
                   className="textarea-huge" 
-                  style={{ minHeight: '50px', padding: '12px', fontSize: '1rem', appearance: 'none', cursor: 'pointer' }}
+                  style={{ minHeight: '40px', padding: '8px', fontSize: '0.95rem', appearance: 'none', cursor: 'pointer' }}
                   value={selectedResident}
                   onChange={(e) => setSelectedResident(e.target.value)}
                 >
@@ -92,18 +92,18 @@ export default function ResidentReports({ currentUser }) {
                     <option key={r.id}>{r.name}</option>
                   ))}
                 </select>
-                <ChevronDown size={20} style={{ position: 'absolute', right: '16px', top: '16px', color: 'var(--text-muted)' }}/>
+                <ChevronDown size={20} style={{ position: 'absolute', right: '12px', top: '10px', color: 'var(--text-muted)' }}/>
               </div>
             </>
           )}
 
-          <label className="input-label" style={{ fontSize: '1rem' }}>{activeTab === 'diario' ? 'Data do Plantão' : 'Período Base'}</label>
-          <div style={{ position: 'relative', marginBottom: '20px' }}>
+          <label className="input-label" style={{ fontSize: '0.95rem' }}>{activeTab === 'diario' ? 'Data do Plantão' : 'Período Base'}</label>
+          <div style={{ position: 'relative', marginBottom: '8px' }}>
             {activeTab === 'diario' ? (
               <input 
                 type="date"
                 className="textarea-huge" 
-                style={{ minHeight: '50px', padding: '12px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }}
+                style={{ minHeight: '40px', padding: '8px', fontSize: '0.95rem', width: '100%', boxSizing: 'border-box' }}
                 value={selectedDateFilter}
                 onChange={(e) => setSelectedDateFilter(e.target.value)}
               />
@@ -111,12 +111,12 @@ export default function ResidentReports({ currentUser }) {
               <>
                 <select 
                   className="textarea-huge" 
-                  style={{ minHeight: '50px', padding: '12px', fontSize: '1rem', appearance: 'none', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}
+                  style={{ minHeight: '40px', padding: '8px', fontSize: '0.95rem', appearance: 'none', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}
                 >
                   <option>Maio / 2026</option>
                   <option>Abril / 2026</option>
                 </select>
-                <ChevronDown size={20} style={{ position: 'absolute', right: '16px', top: '16px', color: 'var(--text-muted)' }}/>
+                <ChevronDown size={20} style={{ position: 'absolute', right: '12px', top: '10px', color: 'var(--text-muted)' }}/>
               </>
             )}
           </div>

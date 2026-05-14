@@ -105,15 +105,15 @@ export default function PharmacyStock() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ marginBottom: '8px' }}>Estoque & Prescrições</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>
-            Gerencie as medicações e as receitas dos moradores.
+          <h2 style={{ marginBottom: '4px' }}>Estoque & Prescrições</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
+            Gerencie medicações e receitas.
           </p>
         </div>
-        <button className="btn btn-primary" style={{ padding: '12px 24px' }} onClick={() => setShowAddModal(true)}>
-          <Plus size={20} />
+        <button className="btn btn-primary" style={{ padding: '8px 16px' }} onClick={() => setShowAddModal(true)}>
+          <Plus size={18} />
           Cadastrar Remédio
         </button>
       </div>

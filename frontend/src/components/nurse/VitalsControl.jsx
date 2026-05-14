@@ -67,18 +67,20 @@ export default function VitalsControl() {
   if (!selectedResident) {
     return (
       <div>
-        <h2>Aferir Sinais Vitais</h2>
-        {residents.map(res => (
-          <div key={res.id} className="card" onClick={() => setSelectedResident(res)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h3 style={{ fontSize: '1.3rem', marginBottom: '4px' }}>{res.name}</h3>
-              <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>Última aferição: Normal</span>
+        <h2 style={{ marginBottom: '16px' }}>Aferir Sinais Vitais</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {residents.map(res => (
+            <div key={res.id} onClick={() => setSelectedResident(res)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface)', padding: '12px 16px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+              <div>
+                <h3 style={{ fontSize: '1.05rem', marginBottom: '2px' }}>{res.name}</h3>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Última aferição: Normal</span>
+              </div>
+              <Activity color="var(--primary)" size={20} />
             </div>
-            <Activity color="var(--primary)" />
-          </div>
-        ))}
+          ))}
+        </div>
 
-        <div style={{ marginTop: '48px', marginBottom: '80px' }}>
+        <div style={{ marginTop: '32px', marginBottom: '80px' }}>
           <h3 style={{ borderBottom: '2px solid var(--border)', paddingBottom: '8px', marginBottom: '16px', color: 'var(--primary-dark)' }}>
             Últimas Aferições
           </h3>

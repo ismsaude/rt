@@ -85,16 +85,16 @@ export default function Programmation({ role }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ marginBottom: '4px', fontSize: '1.4rem' }}>Agenda / Programação</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
+          <h2 style={{ marginBottom: '4px' }}>Agenda / Programação</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
             Consultas e eventos dos moradores.
           </p>
         </div>
         {(role === 'admin' || role === 'enfermeiro') && (
-          <button className="btn btn-primary" style={{ padding: '12px 24px' }} onClick={() => setShowModal(true)}>
-            <Plus size={20} />
+          <button className="btn btn-primary" style={{ padding: '8px 16px' }} onClick={() => setShowModal(true)}>
+            <Plus size={18} />
             Novo Evento
           </button>
         )}

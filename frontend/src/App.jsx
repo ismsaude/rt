@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   CheckSquare, Utensils, ClipboardEdit, 
   Activity, Pill, PackageOpen, UserCircle,
-  CalendarDays, ShoppingCart, FileText, Database, Shield, LogOut, Key, Calendar
+  CalendarDays, ShoppingCart, FileText, Database, Shield, LogOut, Key, Calendar, Menu as MenuIcon, X
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
@@ -43,6 +43,7 @@ export default function App() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [passwordMsg, setPasswordMsg] = useState('');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handleLogin = (userRole, user) => {
     setRole(userRole);
@@ -128,56 +129,66 @@ export default function App() {
 
   // ADMIN LAYOUT (Desktop Focus)
   if (role === 'admin') {
+    const handleMenuClick = (tab) => {
+      setActiveTab(tab);
+      setIsMobileMenuOpen(false);
+    };
+
     return (
       <div className="admin-container">
         <aside className="sidebar">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }} className="sidebar-header-mobile">
-            <div className="sidebar-title" style={{ marginBottom: 0 }}>Aurean Residência Terapêutica - Porto Feliz/SP</div>
-            <button className="btn btn-danger mobile-logout-only" style={{ padding: '8px', display: 'none' }} onClick={handleLogout}>
-              <LogOut size={20} />
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="sidebar-header-mobile">
+            <div className="sidebar-title" style={{ marginBottom: 0, fontWeight: 700, color: 'var(--primary-dark)' }}>Aurean RT - Admin</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn mobile-logout-only" style={{ padding: '8px', background: 'transparent', border: '1px solid var(--border)' }} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+                {isMobileMenuOpen ? <X size={20} /> : <MenuIcon size={20} />}
+              </button>
+              <button className="btn btn-danger mobile-logout-only" style={{ padding: '8px', display: 'none' }} onClick={handleLogout}>
+                <LogOut size={20} />
+              </button>
+            </div>
           </div>
           
-          <nav className="sidebar-menu">
-            <div style={{ marginBottom: '10px', fontSize: '0.75rem', color: 'var(--text-light)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Administração</div>
-            <a className={`sidebar-link ${activeTab === 'cadastros' ? 'active' : ''}`} onClick={() => setActiveTab('cadastros')}>
+          <nav className={`sidebar-menu ${!isMobileMenuOpen ? 'mobile-hidden' : ''}`}>
+            <div style={{ marginBottom: '10px', marginTop: '16px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Administração</div>
+            <a className={`sidebar-link ${activeTab === 'cadastros' ? 'active' : ''}`} onClick={() => handleMenuClick('cadastros')}>
               <Database size={20} /> Central de Cadastros
             </a>
-            <a className={`sidebar-link ${activeTab === 'escalas' ? 'active' : ''}`} onClick={() => setActiveTab('escalas')}>
+            <a className={`sidebar-link ${activeTab === 'escalas' ? 'active' : ''}`} onClick={() => handleMenuClick('escalas')}>
               <CalendarDays size={20} /> Gestão de Escalas
             </a>
-            <a className={`sidebar-link ${activeTab === 'estoque_admin' ? 'active' : ''}`} onClick={() => setActiveTab('estoque_admin')}>
+            <a className={`sidebar-link ${activeTab === 'estoque_admin' ? 'active' : ''}`} onClick={() => handleMenuClick('estoque_admin')}>
               <ShoppingCart size={20} /> Estoque e Compras
             </a>
-            <a className={`sidebar-link ${activeTab === 'relatorios' ? 'active' : ''}`} onClick={() => setActiveTab('relatorios')}>
+            <a className={`sidebar-link ${activeTab === 'relatorios' ? 'active' : ''}`} onClick={() => handleMenuClick('relatorios')}>
               <FileText size={20} /> Relatórios
             </a>
-            <a className={`sidebar-link ${activeTab === 'acessos' ? 'active' : ''}`} onClick={() => setActiveTab('acessos')}>
+            <a className={`sidebar-link ${activeTab === 'acessos' ? 'active' : ''}`} onClick={() => handleMenuClick('acessos')}>
               <Shield size={20} /> Gestão de Acessos
             </a>
 
-            <div style={{ marginTop: '20px', marginBottom: '10px', fontSize: '0.75rem', color: 'var(--text-light)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Operacional - Cuidador</div>
-            <a className={`sidebar-link ${activeTab === 'tarefas' ? 'active' : ''}`} onClick={() => setActiveTab('tarefas')}>
+            <div style={{ marginTop: '20px', marginBottom: '10px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Operacional - Cuidador</div>
+            <a className={`sidebar-link ${activeTab === 'tarefas' ? 'active' : ''}`} onClick={() => handleMenuClick('tarefas')}>
               <CheckSquare size={20} /> Tarefas
             </a>
-            <a className={`sidebar-link ${activeTab === 'cardapio' ? 'active' : ''}`} onClick={() => setActiveTab('cardapio')}>
+            <a className={`sidebar-link ${activeTab === 'cardapio' ? 'active' : ''}`} onClick={() => handleMenuClick('cardapio')}>
               <Utensils size={20} /> Cardápio
             </a>
-            <a className={`sidebar-link ${activeTab === 'plantao' ? 'active' : ''}`} onClick={() => setActiveTab('plantao')}>
+            <a className={`sidebar-link ${activeTab === 'plantao' ? 'active' : ''}`} onClick={() => handleMenuClick('plantao')}>
               <ClipboardEdit size={20} /> Plantão
             </a>
 
-            <div style={{ marginTop: '20px', marginBottom: '10px', fontSize: '0.75rem', color: 'var(--text-light)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Operacional - Enfermagem</div>
-            <a className={`sidebar-link ${activeTab === 'sinais' ? 'active' : ''}`} onClick={() => setActiveTab('sinais')}>
+            <div style={{ marginTop: '20px', marginBottom: '10px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Operacional - Enfermagem</div>
+            <a className={`sidebar-link ${activeTab === 'sinais' ? 'active' : ''}`} onClick={() => handleMenuClick('sinais')}>
               <Activity size={20} /> Sinais Vitais
             </a>
-            <a className={`sidebar-link ${activeTab === 'medicacoes' ? 'active' : ''}`} onClick={() => setActiveTab('medicacoes')}>
+            <a className={`sidebar-link ${activeTab === 'medicacoes' ? 'active' : ''}`} onClick={() => handleMenuClick('medicacoes')}>
               <Pill size={20} /> Medicação
             </a>
-            <a className={`sidebar-link ${activeTab === 'estoque' ? 'active' : ''}`} onClick={() => setActiveTab('estoque')}>
+            <a className={`sidebar-link ${activeTab === 'estoque' ? 'active' : ''}`} onClick={() => handleMenuClick('estoque')}>
               <PackageOpen size={20} /> Estoque Enfermagem
             </a>
-            <a className={`sidebar-link ${activeTab === 'programacao' ? 'active' : ''}`} onClick={() => setActiveTab('programacao')}>
+            <a className={`sidebar-link ${activeTab === 'programacao' ? 'active' : ''}`} onClick={() => handleMenuClick('programacao')}>
               <Calendar size={20} /> Agenda / Prog.
             </a>
           </nav>

@@ -40,14 +40,14 @@ export default function InventoryManagement() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h2 style={{ fontSize: '2rem', marginBottom: '8px' }}>Estoque e Compras</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Gerencie os mantimentos e a farmácia da residência.</p>
+          <h2 style={{ marginBottom: '4px' }}>Estoque e Compras</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Gerencie mantimentos e farmácia.</p>
         </div>
-        <button className="btn btn-primary" style={{ padding: '12px 24px', fontSize: '1rem', background: 'var(--secondary)' }}>
-          <ShoppingCart size={20} />
-          Gerar Lista de Compras ({needsPurchase} itens)
+        <button className="btn btn-primary" style={{ padding: '8px 16px', background: 'var(--secondary)' }}>
+          <ShoppingCart size={18} />
+          Lista de Compras ({needsPurchase})
         </button>
       </div>
 
