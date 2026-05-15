@@ -105,7 +105,11 @@ export default function Programmation({ role }) {
           <p style={{ color: 'var(--text-muted)' }}>Nenhum compromisso agendado.</p>
         ) : (
           events.map(ev => {
-            const evDate = new Date(`${ev.date}T00:00:00`).toLocaleDateString('pt-BR');
+            const evDateObj = new Date(`${ev.date}T00:00:00`);
+            const evDate = evDateObj.toLocaleDateString('pt-BR');
+            let evDayOfWeek = evDateObj.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+            evDayOfWeek = evDayOfWeek.charAt(0).toUpperCase() + evDayOfWeek.slice(1);
+
             return (
               <div key={ev.id} className="card" style={{ borderLeft: '4px solid var(--primary)', padding: '12px 16px', marginBottom: '0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -115,7 +119,7 @@ export default function Programmation({ role }) {
                       <User size={14} /> {ev.resident_name}
                     </p>
                     <p style={{ fontSize: '0.95rem', color: 'var(--primary-dark)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-                      <CalendarIcon size={14} /> {evDate} <Clock size={14} style={{ marginLeft: '8px' }} /> {ev.time}
+                      <CalendarIcon size={14} /> {evDate} ({evDayOfWeek}) <Clock size={14} style={{ marginLeft: '8px' }} /> {ev.time}
                     </p>
                     {ev.location && (
                       <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px' }}>
