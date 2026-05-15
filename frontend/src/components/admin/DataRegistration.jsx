@@ -180,12 +180,19 @@ export default function DataRegistration() {
         {/* COLUNA ESQUERDA: FORMULÁRIOS */}
         <div className="card" style={{ flex: '1', minWidth: '100%', maxWidth: '400px' }}>
           
+          {editingId ? (
+            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <h3 style={{ marginBottom: '8px', color: 'var(--primary)' }}>Modo de Edição</h3>
+              <p>Você está editando um item diretamente na tabela.</p>
+              <button className="btn" style={{ marginTop: '16px', border: '1px solid var(--border)' }} onClick={cancelEdit}>Cancelar Edição</button>
+            </div>
+          ) : (
+            <>
           {/* Formulário: MORADORES */}
           {activeTab === 'moradores' && (
             <form onSubmit={saveResident}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                {editingId ? <Edit2 size={20} /> : <PlusCircle size={20} />} 
-                {editingId ? 'Editar Morador' : 'Novo Morador'}
+                <PlusCircle size={20} /> Novo Morador
               </h3>
               <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--border)' }}/>
               
@@ -214,8 +221,7 @@ export default function DataRegistration() {
           {activeTab === 'medicamentos' && (
             <form onSubmit={saveMed}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                {editingId ? <Edit2 size={20} /> : <PlusCircle size={20} />} 
-                {editingId ? 'Editar Medicamento' : 'Novo Medicamento'}
+                <PlusCircle size={20} /> Novo Medicamento
               </h3>
               <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--border)' }}/>
               
@@ -241,8 +247,7 @@ export default function DataRegistration() {
           {activeTab === 'despensa' && (
             <form onSubmit={saveFood}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                {editingId ? <Edit2 size={20} /> : <PlusCircle size={20} />} 
-                {editingId ? 'Editar Item' : 'Novo Item'}
+                <PlusCircle size={20} /> Novo Item
               </h3>
               <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--border)' }}/>
               
@@ -279,14 +284,14 @@ export default function DataRegistration() {
               </div>
 
               <div style={{ display: 'flex', gap: '12px' }}>
-                {editingId && <button type="button" className="btn" style={{ flex: 1, border: '1px solid var(--border)' }} onClick={cancelEdit}>Cancelar</button>}
                 <button type="submit" disabled={saving} className="btn btn-primary" style={{ flex: 2, padding: '12px' }}>
-                  <Save size={20} /> {saving ? 'Salvando...' : editingId ? 'Atualizar' : 'Salvar'}
+                  <Save size={20} /> {saving ? 'Salvando...' : 'Salvar Novo Item'}
                 </button>
               </div>
             </form>
           )}
-
+            </>
+          )}
         </div>
 
         {/* COLUNA DIREITA: TABELAS */}
@@ -304,16 +309,30 @@ export default function DataRegistration() {
                 </tr>
               </thead>
               <tbody>
-                {loadingList ? <tr><td colSpan="4" style={{ padding: '24px', textAlign: 'center' }}>Carregando...</td></tr> : 
+                {loadingList ? <tr><td colSpan="4" style={{ padding: '16px', textAlign: 'center' }}>Carregando...</td></tr> : 
                   residents.map(r => (
                     <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', background: editingId === r.id ? 'var(--background)' : '' }}>
-                      <td style={{ padding: '16px', fontWeight: 'bold' }}>{r.name}</td>
-                      <td style={{ padding: '16px', color: 'var(--text-muted)' }}>{r.cpf || '-'}</td>
-                      <td style={{ padding: '16px', color: 'var(--text-muted)' }}>{formatDate(r.dateOfBirth)}</td>
-                      <td style={{ padding: '16px', textAlign: 'center' }}>
-                        <button className="btn" style={{ padding: '8px', background: 'transparent', color: 'var(--primary)', marginRight: '8px' }} onClick={() => editResident(r)}><Edit2 size={18}/></button>
-                        <button className="btn" style={{ padding: '8px', background: 'transparent', color: 'var(--danger)' }} onClick={() => deleteResident(r.id)}><Trash2 size={18}/></button>
-                      </td>
+                      {editingId === r.id ? (
+                        <>
+                          <td style={{ padding: '8px' }}><input className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={resident.name} onChange={e => setResident({...resident, name: e.target.value})} /></td>
+                          <td style={{ padding: '8px' }}><input className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={resident.cpf} onChange={e => setResident({...resident, cpf: e.target.value})} /></td>
+                          <td style={{ padding: '8px' }}><input type="date" className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={resident.dateOfBirth} onChange={e => setResident({...resident, dateOfBirth: e.target.value})} /></td>
+                          <td style={{ padding: '8px', textAlign: 'center' }}>
+                            <button className="btn btn-primary" style={{ padding: '8px', marginRight: '4px' }} onClick={saveResident}><Save size={16}/></button>
+                            <button className="btn" style={{ padding: '8px', border: '1px solid var(--border)' }} onClick={cancelEdit}>X</button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={{ padding: '10px 16px', fontWeight: 'bold' }}>{r.name}</td>
+                          <td style={{ padding: '10px 16px', color: 'var(--text-muted)' }}>{r.cpf || '-'}</td>
+                          <td style={{ padding: '10px 16px', color: 'var(--text-muted)' }}>{formatDate(r.dateOfBirth)}</td>
+                          <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                            <button className="btn" style={{ padding: '6px', background: 'transparent', color: 'var(--primary)', marginRight: '8px' }} onClick={() => editResident(r)}><Edit2 size={16}/></button>
+                            <button className="btn" style={{ padding: '6px', background: 'transparent', color: 'var(--danger)' }} onClick={() => deleteResident(r.id)}><Trash2 size={16}/></button>
+                          </td>
+                        </>
+                      )}
                     </tr>
                 ))}
               </tbody>
@@ -332,16 +351,30 @@ export default function DataRegistration() {
                 </tr>
               </thead>
               <tbody>
-                {loadingList ? <tr><td colSpan="4" style={{ padding: '24px', textAlign: 'center' }}>Carregando...</td></tr> : 
+                {loadingList ? <tr><td colSpan="4" style={{ padding: '16px', textAlign: 'center' }}>Carregando...</td></tr> : 
                   meds.map(m => (
                     <tr key={m.id} style={{ borderBottom: '1px solid var(--border)', background: editingId === m.id ? 'var(--background)' : '' }}>
-                      <td style={{ padding: '16px', fontWeight: 'bold' }}>{m.name}</td>
-                      <td style={{ padding: '16px', color: 'var(--text-muted)' }}>{m.dosage}</td>
-                      <td style={{ padding: '16px', color: 'var(--warning)' }}>{m.minStock}</td>
-                      <td style={{ padding: '16px', textAlign: 'center' }}>
-                        <button className="btn" style={{ padding: '8px', background: 'transparent', color: 'var(--primary)', marginRight: '8px' }} onClick={() => editMed(m)}><Edit2 size={18}/></button>
-                        <button className="btn" style={{ padding: '8px', background: 'transparent', color: 'var(--danger)' }} onClick={() => deleteMed(m.id)}><Trash2 size={18}/></button>
-                      </td>
+                      {editingId === m.id ? (
+                        <>
+                          <td style={{ padding: '8px' }}><input className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={med.name} onChange={e => setMed({...med, name: e.target.value})} /></td>
+                          <td style={{ padding: '8px' }}><input className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={med.dosage} onChange={e => setMed({...med, dosage: e.target.value})} /></td>
+                          <td style={{ padding: '8px' }}><input type="number" className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={med.minStock} onChange={e => setMed({...med, minStock: e.target.value})} /></td>
+                          <td style={{ padding: '8px', textAlign: 'center' }}>
+                            <button className="btn btn-primary" style={{ padding: '8px', marginRight: '4px' }} onClick={saveMed}><Save size={16}/></button>
+                            <button className="btn" style={{ padding: '8px', border: '1px solid var(--border)' }} onClick={cancelEdit}>X</button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={{ padding: '10px 16px', fontWeight: 'bold' }}>{m.name}</td>
+                          <td style={{ padding: '10px 16px', color: 'var(--text-muted)' }}>{m.dosage}</td>
+                          <td style={{ padding: '10px 16px', color: 'var(--warning)' }}>{m.minStock}</td>
+                          <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                            <button className="btn" style={{ padding: '6px', background: 'transparent', color: 'var(--primary)', marginRight: '8px' }} onClick={() => editMed(m)}><Edit2 size={16}/></button>
+                            <button className="btn" style={{ padding: '6px', background: 'transparent', color: 'var(--danger)' }} onClick={() => deleteMed(m.id)}><Trash2 size={16}/></button>
+                          </td>
+                        </>
+                      )}
                     </tr>
                 ))}
               </tbody>
@@ -361,21 +394,53 @@ export default function DataRegistration() {
                 </tr>
               </thead>
               <tbody>
-                {loadingList ? <tr><td colSpan="4" style={{ padding: '24px', textAlign: 'center' }}>Carregando...</td></tr> : 
+                {loadingList ? <tr><td colSpan="5" style={{ padding: '16px', textAlign: 'center' }}>Carregando...</td></tr> : 
                   foods.map(f => (
                     <tr key={f.id} style={{ borderBottom: '1px solid var(--border)', background: editingId === f.id ? 'var(--background)' : '' }}>
-                      <td style={{ padding: '16px', fontWeight: 'bold' }}>{f.name}</td>
-                      <td style={{ padding: '16px' }}>
-                        <span style={{ padding: '4px 8px', borderRadius: '12px', fontSize: '0.8rem', background: 'var(--background)' }}>
-                          {f.category}
-                        </span>
-                      </td>
-                      <td style={{ padding: '16px', color: 'var(--primary-dark)', fontWeight: 'bold' }}>{f.quantity} {f.unit}</td>
-                      <td style={{ padding: '16px', color: 'var(--text-muted)' }}>{f.minQuantity} {f.unit}</td>
-                      <td style={{ padding: '16px', textAlign: 'center' }}>
-                        <button className="btn" style={{ padding: '8px', background: 'transparent', color: 'var(--primary)', marginRight: '8px' }} onClick={() => editFood(f)}><Edit2 size={18}/></button>
-                        <button className="btn" style={{ padding: '8px', background: 'transparent', color: 'var(--danger)' }} onClick={() => deleteFood(f.id)}><Trash2 size={18}/></button>
-                      </td>
+                      {editingId === f.id ? (
+                        <>
+                          <td style={{ padding: '8px' }}>
+                            <input className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', marginBottom: '4px' }} value={food.name} onChange={e => setFood({...food, name: e.target.value})} placeholder="Item" />
+                            <select className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={food.unit} onChange={e => setFood({...food, unit: e.target.value})}>
+                              <option>unidades</option>
+                              <option>kg</option>
+                              <option>litros</option>
+                              <option>pacotes</option>
+                            </select>
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            <select className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={food.category} onChange={e => setFood({...food, category: e.target.value})}>
+                              <option>Básico</option>
+                              <option>Limpeza</option>
+                              <option>Higiene</option>
+                              <option>Verduras</option>
+                              <option>Proteínas</option>
+                              <option>Moradores</option>
+                            </select>
+                          </td>
+                          <td style={{ padding: '8px' }}><input type="number" className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={food.quantity} onChange={e => setFood({...food, quantity: e.target.value})} placeholder="Qtd" /></td>
+                          <td style={{ padding: '8px' }}><input type="number" className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={food.minQuantity} onChange={e => setFood({...food, minQuantity: e.target.value})} placeholder="Mín." /></td>
+                          <td style={{ padding: '8px', textAlign: 'center' }}>
+                            <button className="btn btn-primary" style={{ padding: '8px', marginRight: '4px' }} onClick={saveFood}><Save size={16}/></button>
+                            <button className="btn" style={{ padding: '8px', border: '1px solid var(--border)' }} onClick={cancelEdit}>X</button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={{ padding: '10px 16px', fontWeight: 'bold' }}>{f.name}</td>
+                          <td style={{ padding: '10px 16px' }}>
+                            <span style={{ padding: '4px 8px', borderRadius: '12px', fontSize: '0.8rem', background: 'var(--background)' }}>
+                              {f.category}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 16px', color: 'var(--primary-dark)', fontWeight: 'bold' }}>{f.quantity} {f.unit}</td>
+                          <td style={{ padding: '10px 16px', color: 'var(--text-muted)' }}>{f.minQuantity} {f.unit}</td>
+                          <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                            <button className="btn" style={{ padding: '6px', background: 'transparent', color: 'var(--primary)', marginRight: '8px' }} onClick={() => editFood(f)}><Edit2 size={16}/></button>
+                            <button className="btn" style={{ padding: '6px', background: 'transparent', color: 'var(--danger)' }} onClick={() => deleteFood(f.id)}><Trash2 size={16}/></button>
+                          </td>
+                        </>
+                      )}
                     </tr>
                 ))}
               </tbody>
