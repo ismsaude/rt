@@ -63,36 +63,39 @@ export default function InventoryManagement() {
         </button>
       </div>
 
-      <table className="desktop-table">
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th>Categoria</th>
-            <th>Estoque Atual</th>
-            <th>Mínimo Ideal</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {inventory.map(item => (
-            <tr key={item.id} style={{ background: item.status === 'critical' ? 'var(--danger-light)' : 'transparent' }}>
-              <td style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {inventory.map(item => (
+          <div key={item.id} className="card" style={{ padding: '16px', background: item.status === 'critical' ? 'var(--danger-light)' : 'var(--surface)', borderLeft: item.status === 'critical' ? '4px solid var(--danger)' : item.status === 'buy' ? '4px solid var(--warning)' : item.status === 'alert' ? '4px solid #d97706' : '4px solid var(--secondary)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <PackageOpen size={18} color="var(--text-muted)" />
                 {item.name}
-              </td>
-              <td><span style={{ border: '1px solid var(--border)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.9rem' }}>{item.category}</span></td>
-              <td style={{ fontSize: '1.2rem', fontWeight: 'bold', color: item.status === 'critical' ? 'var(--danger)' : 'var(--text-main)' }}>{item.qty}</td>
-              <td style={{ color: 'var(--text-muted)' }}>{item.minQty}</td>
-              <td>
-                {item.status === 'ok' && <span style={{ color: 'var(--secondary)', fontWeight: 'bold' }}>Em dia</span>}
-                {item.status === 'alert' && <span style={{ color: '#d97706', fontWeight: 'bold' }}>Alerta</span>}
-                {item.status === 'buy' && <span style={{ color: 'var(--warning)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}><ShoppingCart size={16}/> Comprar</span>}
-                {item.status === 'critical' && <span style={{ color: 'var(--danger)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}><AlertTriangle size={16}/> Urgente</span>}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </div>
+              <span style={{ border: '1px solid var(--border)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.8rem', background: 'var(--background)' }}>{item.category}</span>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+               <div style={{ display: 'flex', gap: '24px' }}>
+                 <div>
+                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Estoque Atual</div>
+                   <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: item.status === 'critical' ? 'var(--danger)' : 'var(--text-main)' }}>{item.qty}</div>
+                 </div>
+                 <div>
+                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Mínimo</div>
+                   <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>{item.minQty}</div>
+                 </div>
+               </div>
+               
+               <div style={{ textAlign: 'right' }}>
+                  {item.status === 'ok' && <span style={{ color: 'var(--secondary)', fontWeight: 'bold' }}>Em dia</span>}
+                  {item.status === 'alert' && <span style={{ color: '#d97706', fontWeight: 'bold' }}>Alerta</span>}
+                  {item.status === 'buy' && <span style={{ color: 'var(--warning)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}><ShoppingCart size={16}/> Comprar</span>}
+                  {item.status === 'critical' && <span style={{ color: 'var(--danger)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}><AlertTriangle size={16}/> Urgente</span>}
+               </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
