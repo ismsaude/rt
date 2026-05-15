@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { PackageOpen, ShoppingCart, AlertTriangle } from 'lucide-react';
+import { PackageOpen, ShoppingCart, AlertTriangle, X, CheckSquare, Square } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 export default function InventoryManagement() {
   const [inventory, setInventory] = useState([]);
+  const [showShoppingList, setShowShoppingList] = useState(false);
+  const [checkedItems, setCheckedItems] = useState({});
+
+  const toggleCheck = (id) => {
+    setCheckedItems(prev => ({...prev, [id]: !prev[id]}));
+  };
 
   useEffect(() => {
     const fetchInventory = async () => {
@@ -48,7 +54,7 @@ export default function InventoryManagement() {
     fetchInventory();
   }, []);
 
-  const needsPurchase = inventory.filter(i => i.qty <= i.minQty).length;
+  const shoppingItems = inventory.filter(i => i.qty <= i.minQty);
 
   return (
     <div>
@@ -57,11 +63,45 @@ export default function InventoryManagement() {
           <h2 style={{ marginBottom: '4px' }}>Estoque e Compras</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Gerencie mantimentos e farmácia.</p>
         </div>
-        <button className="btn btn-primary" style={{ padding: '8px 16px', background: 'var(--secondary)' }}>
+        <button className="btn btn-primary" style={{ padding: '8px 16px', background: 'var(--secondary)' }} onClick={() => setShowShoppingList(true)}>
           <ShoppingCart size={18} />
-          Lista de Compras ({needsPurchase})
+          Lista de Compras ({shoppingItems.length})
         </button>
       </div>
+
+      {showShoppingList && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999, padding: '16px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', position: 'sticky', top: 0, background: 'var(--surface)', paddingBottom: '16px', borderBottom: '1px solid var(--border)', zIndex: 10 }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                <ShoppingCart size={20} /> Lista de Compras
+              </h3>
+              <button className="btn" style={{ padding: '8px', background: 'var(--background)' }} onClick={() => setShowShoppingList(false)}><X size={20} /></button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {shoppingItems.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>Nenhum item na lista de compras! 🎉</div>
+              ) : (
+                shoppingItems.map(item => (
+                  <div key={item.id} onClick={() => toggleCheck(item.id)} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', background: checkedItems[item.id] ? 'var(--background)' : 'var(--surface)', cursor: 'pointer', opacity: checkedItems[item.id] ? 0.6 : 1 }}>
+                    <div style={{ color: checkedItems[item.id] ? 'var(--secondary)' : 'var(--text-muted)' }}>
+                      {checkedItems[item.id] ? <CheckSquare size={24} /> : <Square size={24} />}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 'bold', textDecoration: checkedItems[item.id] ? 'line-through' : 'none' }}>{item.name}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.category} • Estoque atual: {item.qty}</div>
+                    </div>
+                    {item.status === 'critical' && !checkedItems[item.id] && (
+                      <span style={{ fontSize: '0.8rem', color: 'white', background: 'var(--danger)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>Urgente</span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {inventory.map(item => (
