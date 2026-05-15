@@ -12,24 +12,36 @@ export default function InventoryManagement() {
       
       const items = [];
       if (foodData) {
-        items.push(...foodData.map(f => ({
-          id: f.id,
-          name: f.name,
-          category: f.category,
-          qty: f.quantity,
-          minQty: f.minQuantity,
-          status: f.quantity >= f.minQuantity ? 'ok' : f.quantity > 0 ? 'low' : 'critical'
-        })));
+        items.push(...foodData.map(f => {
+          let st = 'ok';
+          if (f.quantity < f.minQuantity) st = 'critical';
+          else if (f.quantity === f.minQuantity) st = 'buy';
+          else if (f.quantity === f.minQuantity + 1) st = 'alert';
+          return {
+            id: f.id,
+            name: f.name,
+            category: f.category,
+            qty: f.quantity,
+            minQty: f.minQuantity,
+            status: st
+          };
+        }));
       }
       if (medData) {
-        items.push(...medData.map(m => ({
-          id: m.id,
-          name: `${m.name} ${m.dosage}`,
-          category: 'Farmácia',
-          qty: m.stock,
-          minQty: m.minStock,
-          status: m.stock >= m.minStock ? 'ok' : m.stock > 0 ? 'low' : 'critical'
-        })));
+        items.push(...medData.map(m => {
+          let st = 'ok';
+          if (m.stock < m.minStock) st = 'critical';
+          else if (m.stock === m.minStock) st = 'buy';
+          else if (m.stock === m.minStock + 1) st = 'alert';
+          return {
+            id: m.id,
+            name: `${m.name} ${m.dosage}`,
+            category: 'Farmácia',
+            qty: m.stock,
+            minQty: m.minStock,
+            status: st
+          };
+        }));
       }
       setInventory(items);
     };
@@ -73,7 +85,8 @@ export default function InventoryManagement() {
               <td style={{ color: 'var(--text-muted)' }}>{item.minQty}</td>
               <td>
                 {item.status === 'ok' && <span style={{ color: 'var(--secondary)', fontWeight: 'bold' }}>Em dia</span>}
-                {item.status === 'low' && <span style={{ color: 'var(--warning)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}><AlertTriangle size={16}/> Comprar logo</span>}
+                {item.status === 'alert' && <span style={{ color: '#d97706', fontWeight: 'bold' }}>Alerta</span>}
+                {item.status === 'buy' && <span style={{ color: 'var(--warning)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}><ShoppingCart size={16}/> Comprar</span>}
                 {item.status === 'critical' && <span style={{ color: 'var(--danger)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}><AlertTriangle size={16}/> Urgente</span>}
               </td>
             </tr>
