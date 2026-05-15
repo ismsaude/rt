@@ -26,7 +26,7 @@ export default function DataRegistration() {
   // Forms
   const [resident, setResident] = useState({ name: '', cpf: '', dateOfBirth: '', allergies: '' });
   const [med, setMed] = useState({ name: '', dosage: '', minStock: '' });
-  const [food, setFood] = useState({ name: '', category: 'Mercado', unit: 'unidades', minQuantity: '' });
+  const [food, setFood] = useState({ name: '', category: 'Básico', unit: 'unidades', minQuantity: '' });
 
   const fetchData = async () => {
     setLoadingList(true);
@@ -57,7 +57,7 @@ export default function DataRegistration() {
     setEditingId(null);
     if (activeTab === 'moradores') setResident({ name: '', cpf: '', dateOfBirth: '', allergies: '' });
     else if (activeTab === 'medicamentos') setMed({ name: '', dosage: '', minStock: '' });
-    else if (activeTab === 'despensa') setFood({ name: '', category: 'Mercado', unit: 'unidades', minQuantity: '' });
+    else if (activeTab === 'despensa') setFood({ name: '', category: 'Básico', unit: 'unidades', minQuantity: '' });
   };
 
   // ----- CRUD MORADORES -----
@@ -251,9 +251,12 @@ export default function DataRegistration() {
 
               <label className="input-label">Categoria</label>
               <select className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} value={food.category} onChange={e => setFood({...food, category: e.target.value})}>
-                <option>Mercado</option>
-                <option>Higiene</option>
+                <option>Básico</option>
                 <option>Limpeza</option>
+                <option>Higiene</option>
+                <option>Verduras</option>
+                <option>Proteínas</option>
+                <option>Moradores</option>
               </select>
 
               <label className="input-label">Unidade de Medida</label>
