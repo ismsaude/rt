@@ -314,12 +314,12 @@ export default function DataRegistration() {
                     <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', background: editingId === r.id ? 'var(--background)' : '' }}>
                       {editingId === r.id ? (
                         <>
-                          <td style={{ padding: '8px' }}><input className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={resident.name} onChange={e => setResident({...resident, name: e.target.value})} /></td>
-                          <td style={{ padding: '8px' }}><input className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={resident.cpf} onChange={e => setResident({...resident, cpf: e.target.value})} /></td>
-                          <td style={{ padding: '8px' }}><input type="date" className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={resident.dateOfBirth} onChange={e => setResident({...resident, dateOfBirth: e.target.value})} /></td>
-                          <td style={{ padding: '8px', textAlign: 'center' }}>
-                            <button className="btn btn-primary" style={{ padding: '8px', marginRight: '4px' }} onClick={saveResident}><Save size={16}/></button>
-                            <button className="btn" style={{ padding: '8px', border: '1px solid var(--border)' }} onClick={cancelEdit}>X</button>
+                          <td style={{ padding: '8px' }}><input style={{ padding: '6px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={resident.name} onChange={e => setResident({...resident, name: e.target.value})} /></td>
+                          <td style={{ padding: '8px' }}><input style={{ padding: '6px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={resident.cpf} onChange={e => setResident({...resident, cpf: e.target.value})} /></td>
+                          <td style={{ padding: '8px' }}><input type="date" style={{ padding: '6px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={resident.dateOfBirth} onChange={e => setResident({...resident, dateOfBirth: e.target.value})} /></td>
+                          <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <button className="btn btn-primary" style={{ padding: '6px 12px', marginRight: '4px' }} onClick={saveResident}><Save size={16}/></button>
+                            <button className="btn" style={{ padding: '6px 12px', border: '1px solid var(--border)' }} onClick={cancelEdit}>X</button>
                           </td>
                         </>
                       ) : (
@@ -356,12 +356,12 @@ export default function DataRegistration() {
                     <tr key={m.id} style={{ borderBottom: '1px solid var(--border)', background: editingId === m.id ? 'var(--background)' : '' }}>
                       {editingId === m.id ? (
                         <>
-                          <td style={{ padding: '8px' }}><input className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={med.name} onChange={e => setMed({...med, name: e.target.value})} /></td>
-                          <td style={{ padding: '8px' }}><input className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={med.dosage} onChange={e => setMed({...med, dosage: e.target.value})} /></td>
-                          <td style={{ padding: '8px' }}><input type="number" className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={med.minStock} onChange={e => setMed({...med, minStock: e.target.value})} /></td>
-                          <td style={{ padding: '8px', textAlign: 'center' }}>
-                            <button className="btn btn-primary" style={{ padding: '8px', marginRight: '4px' }} onClick={saveMed}><Save size={16}/></button>
-                            <button className="btn" style={{ padding: '8px', border: '1px solid var(--border)' }} onClick={cancelEdit}>X</button>
+                          <td style={{ padding: '8px' }}><input style={{ padding: '6px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={med.name} onChange={e => setMed({...med, name: e.target.value})} /></td>
+                          <td style={{ padding: '8px' }}><input style={{ padding: '6px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={med.dosage} onChange={e => setMed({...med, dosage: e.target.value})} /></td>
+                          <td style={{ padding: '8px' }}><input type="number" style={{ padding: '6px', fontSize: '0.9rem', width: '80px', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={med.minStock} onChange={e => setMed({...med, minStock: e.target.value})} /></td>
+                          <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <button className="btn btn-primary" style={{ padding: '6px 12px', marginRight: '4px' }} onClick={saveMed}><Save size={16}/></button>
+                            <button className="btn" style={{ padding: '6px 12px', border: '1px solid var(--border)' }} onClick={cancelEdit}>X</button>
                           </td>
                         </>
                       ) : (
@@ -400,8 +400,8 @@ export default function DataRegistration() {
                       {editingId === f.id ? (
                         <>
                           <td style={{ padding: '8px' }}>
-                            <input className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', marginBottom: '4px' }} value={food.name} onChange={e => setFood({...food, name: e.target.value})} placeholder="Item" />
-                            <select className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={food.unit} onChange={e => setFood({...food, unit: e.target.value})}>
+                            <input style={{ padding: '6px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', marginBottom: '4px', border: '1px solid var(--border)', borderRadius: '6px' }} value={food.name} onChange={e => setFood({...food, name: e.target.value})} placeholder="Item" />
+                            <select style={{ padding: '6px', fontSize: '0.8rem', width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={food.unit} onChange={e => setFood({...food, unit: e.target.value})}>
                               <option>unidades</option>
                               <option>kg</option>
                               <option>litros</option>
@@ -409,7 +409,7 @@ export default function DataRegistration() {
                             </select>
                           </td>
                           <td style={{ padding: '8px' }}>
-                            <select className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={food.category} onChange={e => setFood({...food, category: e.target.value})}>
+                            <select style={{ padding: '6px', fontSize: '0.9rem', width: '110px', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={food.category} onChange={e => setFood({...food, category: e.target.value})}>
                               <option>Básico</option>
                               <option>Limpeza</option>
                               <option>Higiene</option>
@@ -418,11 +418,11 @@ export default function DataRegistration() {
                               <option>Moradores</option>
                             </select>
                           </td>
-                          <td style={{ padding: '8px' }}><input type="number" className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={food.quantity} onChange={e => setFood({...food, quantity: e.target.value})} placeholder="Qtd" /></td>
-                          <td style={{ padding: '8px' }}><input type="number" className="textarea-huge" style={{ minHeight: '36px', padding: '8px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' }} value={food.minQuantity} onChange={e => setFood({...food, minQuantity: e.target.value})} placeholder="Mín." /></td>
-                          <td style={{ padding: '8px', textAlign: 'center' }}>
-                            <button className="btn btn-primary" style={{ padding: '8px', marginRight: '4px' }} onClick={saveFood}><Save size={16}/></button>
-                            <button className="btn" style={{ padding: '8px', border: '1px solid var(--border)' }} onClick={cancelEdit}>X</button>
+                          <td style={{ padding: '8px' }}><input type="number" style={{ padding: '6px', fontSize: '0.9rem', width: '80px', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={food.quantity} onChange={e => setFood({...food, quantity: e.target.value})} placeholder="Qtd" /></td>
+                          <td style={{ padding: '8px' }}><input type="number" style={{ padding: '6px', fontSize: '0.9rem', width: '80px', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={food.minQuantity} onChange={e => setFood({...food, minQuantity: e.target.value})} placeholder="Mín." /></td>
+                          <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <button className="btn btn-primary" style={{ padding: '6px 12px', marginRight: '4px' }} onClick={saveFood}><Save size={16}/></button>
+                            <button className="btn" style={{ padding: '6px 12px', border: '1px solid var(--border)' }} onClick={cancelEdit}>X</button>
                           </td>
                         </>
                       ) : (
