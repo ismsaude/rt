@@ -26,7 +26,7 @@ export default function DataRegistration() {
   // Forms
   const [resident, setResident] = useState({ name: '', cpf: '', dateOfBirth: '', allergies: '' });
   const [med, setMed] = useState({ name: '', dosage: '', minStock: '' });
-  const [food, setFood] = useState({ name: '', category: 'Básico', unit: 'unidades', minQuantity: '' });
+  const [food, setFood] = useState({ name: '', category: 'Básico', unit: 'unidades', quantity: '', minQuantity: '' });
 
   const fetchData = async () => {
     setLoadingList(true);
@@ -57,7 +57,7 @@ export default function DataRegistration() {
     setEditingId(null);
     if (activeTab === 'moradores') setResident({ name: '', cpf: '', dateOfBirth: '', allergies: '' });
     else if (activeTab === 'medicamentos') setMed({ name: '', dosage: '', minStock: '' });
-    else if (activeTab === 'despensa') setFood({ name: '', category: 'Básico', unit: 'unidades', minQuantity: '' });
+    else if (activeTab === 'despensa') setFood({ name: '', category: 'Básico', unit: 'unidades', quantity: '', minQuantity: '' });
   };
 
   // ----- CRUD MORADORES -----
@@ -128,10 +128,10 @@ export default function DataRegistration() {
     e.preventDefault();
     setSaving(true);
     if (editingId) {
-      const { error } = await supabase.from('FoodItem').update({ ...food, minQuantity: parseFloat(food.minQuantity), updatedAt: new Date().toISOString() }).eq('id', editingId);
+      const { error } = await supabase.from('FoodItem').update({ ...food, quantity: parseFloat(food.quantity), minQuantity: parseFloat(food.minQuantity), updatedAt: new Date().toISOString() }).eq('id', editingId);
       if (!error) { handleSuccess(); cancelEdit(); fetchData(); } else alert(error.message);
     } else {
-      const { error } = await supabase.from('FoodItem').insert([{ id: crypto.randomUUID(), ...food, quantity: 0, minQuantity: parseFloat(food.minQuantity), updatedAt: new Date().toISOString() }]);
+      const { error } = await supabase.from('FoodItem').insert([{ id: crypto.randomUUID(), ...food, quantity: parseFloat(food.quantity), minQuantity: parseFloat(food.minQuantity), updatedAt: new Date().toISOString() }]);
       if (!error) { handleSuccess(); cancelEdit(); fetchData(); } else alert(error.message);
     }
     setSaving(false);
@@ -139,7 +139,7 @@ export default function DataRegistration() {
 
   const editFood = (f) => {
     setEditingId(f.id);
-    setFood({ name: f.name, category: f.category, unit: f.unit, minQuantity: f.minQuantity });
+    setFood({ name: f.name, category: f.category, unit: f.unit, quantity: f.quantity, minQuantity: f.minQuantity });
   };
 
   const deleteFood = async (id) => {
@@ -267,8 +267,16 @@ export default function DataRegistration() {
                 <option>pacotes</option>
               </select>
 
-              <label className="input-label">Estoque Mínimo</label>
-              <input required type="number" placeholder="Ex: 5" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '24px' }} value={food.minQuantity} onChange={e => setFood({...food, minQuantity: e.target.value})} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
+                <div>
+                  <label className="input-label">Estoque Atual</label>
+                  <input required type="number" placeholder="Ex: 10" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={food.quantity} onChange={e => setFood({...food, quantity: e.target.value})} />
+                </div>
+                <div>
+                  <label className="input-label">Estoque Mínimo</label>
+                  <input required type="number" placeholder="Ex: 5" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={food.minQuantity} onChange={e => setFood({...food, minQuantity: e.target.value})} />
+                </div>
+              </div>
 
               <div style={{ display: 'flex', gap: '12px' }}>
                 {editingId && <button type="button" className="btn" style={{ flex: 1, border: '1px solid var(--border)' }} onClick={cancelEdit}>Cancelar</button>}
@@ -347,6 +355,7 @@ export default function DataRegistration() {
                 <tr>
                   <th style={{ padding: '16px' }}>Item</th>
                   <th style={{ padding: '16px' }}>Categoria</th>
+                  <th style={{ padding: '16px' }}>Estoque Atual</th>
                   <th style={{ padding: '16px' }}>Mínimo p/ Alerta</th>
                   <th style={{ padding: '16px', textAlign: 'center' }}>Ações</th>
                 </tr>
@@ -361,6 +370,7 @@ export default function DataRegistration() {
                           {f.category}
                         </span>
                       </td>
+                      <td style={{ padding: '16px', color: 'var(--primary-dark)', fontWeight: 'bold' }}>{f.quantity} {f.unit}</td>
                       <td style={{ padding: '16px', color: 'var(--text-muted)' }}>{f.minQuantity} {f.unit}</td>
                       <td style={{ padding: '16px', textAlign: 'center' }}>
                         <button className="btn" style={{ padding: '8px', background: 'transparent', color: 'var(--primary)', marginRight: '8px' }} onClick={() => editFood(f)}><Edit2 size={18}/></button>
