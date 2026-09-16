@@ -3,10 +3,10 @@ import { Printer, Save, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import {
-  calcAge, formatDate, formatDateTime, formatMonthLabel, MESES, toDate, toISODate,
+  calcAge, formatDate, formatDateTime, MESES, toDate, toISODate,
 } from '../../lib/format';
 import { CLINICAL_EVENT_TYPES, formatCouncil, SOCIAL_EVENT_TYPES } from '../../lib/clinical';
-import { Alert, Badge, Button, useToast } from '../ui';
+import { Alert, Badge, Button, MonthPicker, useToast } from '../ui';
 
 const AUTONOMY_LEVELS = ['Independente', 'Semi-dependente', 'Dependente'];
 
@@ -365,16 +365,14 @@ export default function MonthlySheet({
                   a ficha não pode declarar um mês e exibir os números
                   de outro. */}
               <span className="sheet__meta-value print-hide">
-                <select
-                  className="sheet-select"
+                <MonthPicker
                   value={monthKey}
-                  onChange={(e) => onMonthChange?.(e.target.value)}
-                  aria-label="Período de referência da ficha"
-                >
-                  {months.map((m) => (
-                    <option key={m} value={m}>{formatMonthLabel(m)}</option>
-                  ))}
-                </select>
+                  onChange={(m) => onMonthChange?.(m)}
+                  withData={months}
+                  selectClassName="sheet-select"
+                  ariaLabelMonth="Mês de referência da ficha"
+                  ariaLabelYear="Ano de referência da ficha"
+                />
               </span>
               <span className="sheet__meta-value print-only">{periodo}</span>
             </div>

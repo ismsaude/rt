@@ -11,6 +11,7 @@ export {
   TextareaField,
 } from './Field';
 export { default as Modal } from './Modal';
+export { default as MonthPicker } from './MonthPicker';
 export { default as Badge } from './Badge';
 export { default as ChipGroup } from './ChipGroup';
 export { default as Alert } from './Alert';

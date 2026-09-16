@@ -18,9 +18,10 @@ import {
   FOOD_LABELS, HYGIENE_LABELS, MEDS_LABELS,
 } from '../../lib/shiftReports';
 import {
-  Alert, Avatar, Badge, Button, Card, CardBody, CardHeader, EmptyState, Meter,
-  PageHeader, Segmented, SelectField, SkeletonList, StackedMeter, Stat,
-  StatGrid, Tabs, TextareaField, Timeline, TimelineItem, useConfirm, useToast,
+  Alert, Avatar, Badge, Button, Card, CardBody, CardHeader, EmptyState, Field,
+  Meter, MonthPicker, PageHeader, Segmented, SelectField, SkeletonList,
+  StackedMeter, Stat, StatGrid, Tabs, TextareaField, Timeline, TimelineItem,
+  useConfirm, useToast,
 } from '../ui';
 
 /** A tabela de parecer mensal é opcional: o sistema funciona sem ela. */
@@ -257,13 +258,12 @@ export default function ResidentReports({ currentUser }) {
                   {residents.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </SelectField>
 
-                <SelectField
+                <Field
                   label="Mês de referência"
-                  value={monthKey}
-                  onChange={(e) => setMonthKey(e.target.value)}
+                  hint="O ponto marca os meses que já possuem plantões registrados."
                 >
-                  {months.map((m) => <option key={m} value={m}>{formatMonthLabel(m)}</option>)}
-                </SelectField>
+                  <MonthPicker value={monthKey} onChange={setMonthKey} withData={months} />
+                </Field>
               </div>
             </CardBody>
           </Card>
@@ -300,16 +300,28 @@ export default function ResidentReports({ currentUser }) {
                 description="Cadastre os moradores para gerar relatórios mensais."
               />
             </Card>
-          ) : !summary || summary.totalPlantoes === 0 ? (
+          ) : !summary || (summary.totalPlantoes === 0 && monthView !== 'ficha') ? (
+            /* Leitura e Resumo dependem de plantões; a Ficha não —
+               períodos antigos podem ser preenchidos à mão. */
             <Card>
               <EmptyState
                 icon={FileText}
                 title="Sem registros neste mês"
-                description={`Não há passagens de plantão com anotações sobre ${resident?.name} em ${formatMonthLabel(monthKey)}.`}
+                description={`Não há passagens de plantão com anotações sobre ${resident?.name} em ${formatMonthLabel(monthKey)}. Para emitir a ficha deste período mesmo assim, use o modo Ficha mensal.`}
               />
             </Card>
           ) : (
             <div className="u-stack u-gap-6">
+              {monthView === 'ficha' && summary.totalPlantoes === 0 && (
+                <div className="print-hide" style={{ maxWidth: 820, margin: '0 auto var(--space-4)' }}>
+                  <Alert tone="info" title="Período sem plantões registrados">
+                    Não há passagens de plantão de {resident?.name} em{' '}
+                    {formatMonthLabel(monthKey)}. A ficha pode ser preenchida e emitida
+                    normalmente, mas as seções não terão rascunho automático.
+                  </Alert>
+                </div>
+              )}
+
               {monthView === 'ficha' && (
                 <MonthlySheet
                   resident={resident}
