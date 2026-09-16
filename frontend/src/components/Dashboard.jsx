@@ -127,11 +127,11 @@ export default function Dashboard({ role, currentUser }) {
   return (
     <div>
       <PageHeader
-        title="Tarefas do dia"
+        title="Tarefas e Compromissos"
         description={
           tasks.length > 0
-            ? `${done} de ${tasks.length} concluídas na rotina da casa.`
-            : 'Rotina de cuidados e organização da residência.'
+            ? `${done} de ${tasks.length} tarefas concluídas.`
+            : 'Rotina da casa e agenda dos moradores.'
         }
         actions={
           isManager && (

@@ -46,7 +46,7 @@ const VIEWS = {
   relatorios:   { label: 'Relatórios',           short: 'Relatórios',icon: FileText,     Component: ResidentReports },
   acessos:      { label: 'Gestão de Acessos',    short: 'Acessos',   icon: Shield,       Component: AccessManagement },
 
-  tarefas:      { label: 'Tarefas do Dia',       short: 'Tarefas',   icon: CheckSquare,  Component: Dashboard },
+  tarefas:      { label: 'Tarefas e Compromissos', short: 'Tarefas', icon: CheckSquare,  Component: Dashboard },
   cardapio:     { label: 'Cardápio',             short: 'Cardápio',  icon: Utensils,     Component: DailyMenu },
   plantao:      { label: 'Passagem de Plantão',  short: 'Plantão',   icon: ClipboardEdit,Component: ShiftHandover },
 
