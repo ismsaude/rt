@@ -1,141 +1,245 @@
-import React, { useState, useEffect } from 'react';
-import { PackageOpen, ShoppingCart, AlertTriangle, X, CheckSquare, Square } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle, CheckCircle2, CheckSquare, PackageOpen, ShoppingCart, Square,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import {
+  Badge, Button, Card, CardBody, EmptyState, Modal, PageHeader, Segmented,
+  SkeletonList, Stat, StatGrid, useToast,
+} from '../ui';
+
+function statusOf(qty, minQty) {
+  if (qty < minQty) return 'critical';
+  if (qty === minQty) return 'buy';
+  if (qty <= minQty + 1) return 'alert';
+  return 'ok';
+}
+
+const STATUS_META = {
+  ok:       { tone: 'success', label: 'Em dia',   accent: undefined, icon: CheckCircle2 },
+  alert:    { tone: 'warning', label: 'Atenção',  accent: 'warning', icon: AlertTriangle },
+  buy:      { tone: 'warning', label: 'Comprar',  accent: 'warning', icon: ShoppingCart },
+  critical: { tone: 'danger',  label: 'Urgente',  accent: 'danger',  icon: AlertTriangle },
+};
 
 export default function InventoryManagement() {
+  const toast = useToast();
+
   const [inventory, setInventory] = useState([]);
-  const [showShoppingList, setShowShoppingList] = useState(false);
-  const [checkedItems, setCheckedItems] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('todos');
+  const [listOpen, setListOpen] = useState(false);
+  const [checked, setChecked] = useState({});
 
-  const toggleCheck = (id) => {
-    setCheckedItems(prev => ({...prev, [id]: !prev[id]}));
-  };
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [{ data: foods, error: foodError }, { data: meds, error: medError }] = await Promise.all([
+      supabase.from('FoodItem').select('*'),
+      supabase.from('Medication').select('*'),
+    ]);
 
-  useEffect(() => {
-    const fetchInventory = async () => {
-      const { data: foodData } = await supabase.from('FoodItem').select('*');
-      const { data: medData } = await supabase.from('Medication').select('*');
-      
-      const items = [];
-      if (foodData) {
-        items.push(...foodData.map(f => {
-          let st = 'ok';
-          if (f.quantity < f.minQuantity) st = 'critical';
-          else if (f.quantity === f.minQuantity) st = 'buy';
-          else if (f.quantity === f.minQuantity + 1) st = 'alert';
-          return {
-            id: f.id,
-            name: f.name,
-            category: f.category,
-            qty: f.quantity,
-            minQty: f.minQuantity,
-            status: st
-          };
-        }));
-      }
-      if (medData) {
-        items.push(...medData.map(m => {
-          let st = 'ok';
-          if (m.stock < m.minStock) st = 'critical';
-          else if (m.stock === m.minStock) st = 'buy';
-          else if (m.stock === m.minStock + 1) st = 'alert';
-          return {
-            id: m.id,
-            name: `${m.name} ${m.dosage}`,
-            category: 'Farmácia',
-            qty: m.stock,
-            minQty: m.minStock,
-            status: st
-          };
-        }));
-      }
-      setInventory(items);
-    };
-    fetchInventory();
-  }, []);
+    if (foodError || medError) toast.error('Não foi possível carregar o estoque completo.');
 
-  const shoppingItems = inventory.filter(i => i.qty <= i.minQty);
+    const items = [
+      ...(foods || []).map((f) => ({
+        id: `food-${f.id}`,
+        name: f.name,
+        category: f.category || 'Despensa',
+        group: 'despensa',
+        qty: f.quantity ?? 0,
+        minQty: f.minQuantity ?? 0,
+        unit: f.unit || 'un',
+      })),
+      ...(meds || []).map((m) => ({
+        id: `med-${m.id}`,
+        name: [m.name, m.dosage].filter(Boolean).join(' '),
+        category: 'Farmácia',
+        group: 'farmacia',
+        qty: m.stock ?? 0,
+        minQty: m.minStock ?? 0,
+        unit: 'un',
+      })),
+    ].map((item) => ({ ...item, status: statusOf(item.qty, item.minQty) }));
+
+    setInventory(items);
+    setLoading(false);
+  }, [toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const shoppingItems = useMemo(
+    () => inventory.filter((i) => i.qty <= i.minQty),
+    [inventory]
+  );
+
+  const visible = useMemo(() => {
+    if (filter === 'todos') return inventory;
+    if (filter === 'repor') return shoppingItems;
+    return inventory.filter((i) => i.group === filter);
+  }, [inventory, filter, shoppingItems]);
+
+  const criticalCount = inventory.filter((i) => i.status === 'critical').length;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h2 style={{ marginBottom: '4px' }}>Estoque e Compras</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Gerencie mantimentos e farmácia.</p>
-        </div>
-        <button className="btn btn-primary" style={{ padding: '8px 16px', background: 'var(--secondary)' }} onClick={() => setShowShoppingList(true)}>
-          <ShoppingCart size={18} />
-          Lista de Compras ({shoppingItems.length})
-        </button>
+      <PageHeader
+        title="Estoque e compras"
+        description="Despensa e farmácia da residência em uma só visão."
+        actions={
+          <Button
+            variant="primary" icon={ShoppingCart}
+            onClick={() => setListOpen(true)}
+            disabled={shoppingItems.length === 0}
+          >
+            Lista de compras ({shoppingItems.length})
+          </Button>
+        }
+      />
+
+      {!loading && (
+        <StatGrid style={{ marginBottom: 'var(--space-6)' }}>
+          <Stat label="Itens cadastrados" value={inventory.length} icon={PackageOpen} />
+          <Stat
+            label="Precisam reposição" value={shoppingItems.length}
+            tone={shoppingItems.length > 0 ? 'warning' : 'default'} icon={ShoppingCart}
+          />
+          <Stat
+            label="Em falta" value={criticalCount}
+            tone={criticalCount > 0 ? 'danger' : 'default'} icon={AlertTriangle}
+          />
+        </StatGrid>
+      )}
+
+      <div style={{ marginBottom: 'var(--space-5)' }}>
+        <Segmented
+          ariaLabel="Filtrar estoque"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: 'todos', label: 'Todos' },
+            { value: 'repor', label: 'Repor' },
+            { value: 'despensa', label: 'Despensa' },
+            { value: 'farmacia', label: 'Farmácia' },
+          ]}
+        />
       </div>
 
-      {showShoppingList && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999, padding: '16px' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', position: 'sticky', top: 0, background: 'var(--surface)', paddingBottom: '16px', borderBottom: '1px solid var(--border)', zIndex: 10 }}>
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                <ShoppingCart size={20} /> Lista de Compras
-              </h3>
-              <button className="btn" style={{ padding: '8px', background: 'var(--background)' }} onClick={() => setShowShoppingList(false)}><X size={20} /></button>
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {shoppingItems.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>Nenhum item na lista de compras! 🎉</div>
-              ) : (
-                shoppingItems.map(item => (
-                  <div key={item.id} onClick={() => toggleCheck(item.id)} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', background: checkedItems[item.id] ? 'var(--background)' : 'var(--surface)', cursor: 'pointer', opacity: checkedItems[item.id] ? 0.6 : 1 }}>
-                    <div style={{ color: checkedItems[item.id] ? 'var(--secondary)' : 'var(--text-muted)' }}>
-                      {checkedItems[item.id] ? <CheckSquare size={24} /> : <Square size={24} />}
+      {loading ? (
+        <SkeletonList count={4} />
+      ) : visible.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={filter === 'repor' ? CheckCircle2 : PackageOpen}
+            title={filter === 'repor' ? 'Nada para comprar' : 'Nenhum item neste filtro'}
+            description={
+              filter === 'repor'
+                ? 'Todos os itens estão acima do estoque mínimo.'
+                : 'Cadastre itens na Central de Cadastros ou no Estoque de Enfermagem.'
+            }
+          />
+        </Card>
+      ) : (
+        <div className="list">
+          {visible.map((item) => {
+            const meta = STATUS_META[item.status];
+            return (
+              <Card key={item.id} accent={meta.accent}>
+                <CardBody tight>
+                  <div className="u-between u-gap-4 u-wrap">
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="u-row u-gap-2" style={{ marginBottom: 'var(--space-2)' }}>
+                        <PackageOpen size={15} color="var(--text-subtle)" aria-hidden="true" />
+                        <strong style={{ color: 'var(--text-strong)' }}>{item.name}</strong>
+                      </div>
+                      <Badge tone="neutral">{item.category}</Badge>
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 'bold', textDecoration: checkedItems[item.id] ? 'line-through' : 'none' }}>{item.name}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.category} • Estoque atual: {item.qty}</div>
+
+                    <div className="u-row u-gap-6">
+                      <div>
+                        <div className="stat__label">Atual</div>
+                        <div
+                          style={{
+                            fontSize: 'var(--text-lg)',
+                            fontWeight: 'var(--weight-semibold)',
+                            color: item.status === 'critical' ? 'var(--danger)' : 'var(--text-strong)',
+                          }}
+                        >
+                          {item.qty} {item.unit}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="stat__label">Mínimo</div>
+                        <div
+                          style={{
+                            fontSize: 'var(--text-lg)',
+                            fontWeight: 'var(--weight-semibold)',
+                            color: 'var(--text-muted)',
+                          }}
+                        >
+                          {item.minQty} {item.unit}
+                        </div>
+                      </div>
+                      <Badge tone={meta.tone} icon={meta.icon}>{meta.label}</Badge>
                     </div>
-                    {item.status === 'critical' && !checkedItems[item.id] && (
-                      <span style={{ fontSize: '0.8rem', color: 'white', background: 'var(--danger)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>Urgente</span>
-                    )}
                   </div>
-                ))
-              )}
-            </div>
-          </div>
+                </CardBody>
+              </Card>
+            );
+          })}
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {inventory.map(item => (
-          <div key={item.id} className="card" style={{ padding: '16px', background: item.status === 'critical' ? 'var(--danger-light)' : 'var(--surface)', borderLeft: item.status === 'critical' ? '4px solid var(--danger)' : item.status === 'buy' ? '4px solid var(--warning)' : item.status === 'alert' ? '4px solid #d97706' : '4px solid var(--secondary)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', gap: '8px', flexWrap: 'wrap' }}>
-              <div style={{ fontWeight: 'bold', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <PackageOpen size={18} color="var(--text-muted)" />
-                {item.name}
-              </div>
-              <span style={{ border: '1px solid var(--border)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.8rem', background: 'var(--background)' }}>{item.category}</span>
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-               <div style={{ display: 'flex', gap: '24px' }}>
-                 <div>
-                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Estoque Atual</div>
-                   <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: item.status === 'critical' ? 'var(--danger)' : 'var(--text-main)' }}>{item.qty}</div>
-                 </div>
-                 <div>
-                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Mínimo</div>
-                   <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>{item.minQty}</div>
-                 </div>
-               </div>
-               
-               <div style={{ textAlign: 'right' }}>
-                  {item.status === 'ok' && <span style={{ color: 'var(--secondary)', fontWeight: 'bold' }}>Em dia</span>}
-                  {item.status === 'alert' && <span style={{ color: '#d97706', fontWeight: 'bold' }}>Alerta</span>}
-                  {item.status === 'buy' && <span style={{ color: 'var(--warning)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}><ShoppingCart size={16}/> Comprar</span>}
-                  {item.status === 'critical' && <span style={{ color: 'var(--danger)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}><AlertTriangle size={16}/> Urgente</span>}
-               </div>
-            </div>
+      <Modal
+        open={listOpen}
+        onClose={() => setListOpen(false)}
+        title="Lista de compras"
+        description="Toque nos itens conforme forem colocados no carrinho."
+        footer={<Button variant="primary" onClick={() => setListOpen(false)}>Concluir</Button>}
+      >
+        {shoppingItems.length === 0 ? (
+          <EmptyState icon={CheckCircle2} title="Nada para comprar" />
+        ) : (
+          <div className="u-stack u-gap-2">
+            {shoppingItems.map((item) => {
+              const isChecked = !!checked[item.id];
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setChecked((c) => ({ ...c, [item.id]: !c[item.id] }))}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                    padding: 'var(--space-3)', textAlign: 'left',
+                    border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+                    background: isChecked ? 'var(--surface-sunken)' : 'var(--surface)',
+                    opacity: isChecked ? 0.6 : 1,
+                    transition: 'all var(--duration-fast)',
+                  }}
+                >
+                  <span style={{ color: isChecked ? 'var(--success)' : 'var(--text-subtle)', display: 'flex' }}>
+                    {isChecked ? <CheckSquare size={22} /> : <Square size={22} />}
+                  </span>
+                  <span className="u-grow" style={{ minWidth: 0 }}>
+                    <span
+                      style={{
+                        display: 'block',
+                        fontWeight: 'var(--weight-medium)',
+                        color: 'var(--text-strong)',
+                        textDecoration: isChecked ? 'line-through' : 'none',
+                      }}
+                    >
+                      {item.name}
+                    </span>
+                    <span className="u-subtle" style={{ fontSize: 'var(--text-xs)' }}>
+                      {item.category} · restam {item.qty} {item.unit}
+                    </span>
+                  </span>
+                  {item.status === 'critical' && !isChecked && <Badge tone="danger">Urgente</Badge>}
+                </button>
+              );
+            })}
           </div>
-        ))}
-      </div>
+        )}
+      </Modal>
     </div>
   );
 }

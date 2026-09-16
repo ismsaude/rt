@@ -1,151 +1,304 @@
-import React, { useState, useEffect } from 'react';
-import { Utensils, CheckCircle2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  CalendarDays, CheckCircle2, Clock, Pencil, Plus, Trash2, Utensils,
+} from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { DIAS_SEMANA } from '../lib/format';
+import {
+  Badge, Button, Card, CardBody, EmptyState, Modal, PageHeader, Segmented,
+  SelectField, SkeletonList, TextField, useConfirm, useToast,
+} from './ui';
+
+const MEAL_TYPES = [
+  'Café da Manhã', 'Lanche da Manhã', 'Almoço',
+  'Lanche da Tarde', 'Jantar', 'Ceia',
+];
+
+const EMPTY_DRAFT = () => ({
+  type: 'Café da Manhã',
+  time: '08:00',
+  menu: '',
+  dayOfWeek: new Date().getDay(),
+});
+
+/** Refeições antigas não tinham dayOfWeek; deduz pela data gravada. */
+function resolveDay(meal, fallback) {
+  if (meal.dayOfWeek !== undefined && meal.dayOfWeek !== null) return Number(meal.dayOfWeek);
+  if (meal.date) return new Date(meal.date).getDay();
+  return fallback;
+}
 
 export default function DailyMenu({ role }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+
   const [meals, setMeals] = useState([]);
-  const [newMealType, setNewMealType] = useState('Café da Manhã');
-  const [newMealTime, setNewMealTime] = useState('08:00');
-  const [newMealMenu, setNewMealMenu] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState('hoje');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState(EMPTY_DRAFT);
 
-  useEffect(() => {
-    fetchMeals();
-  }, []);
+  const isManager = role === 'admin';
+  const today = new Date().getDay();
+  const tomorrow = (today + 1) % 7;
 
-  const fetchMeals = async () => {
-    const { data, error } = await supabase.from('Menu').select('*').order('time', { ascending: true });
-    if (data && data.length > 0) {
-      setMeals(data);
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('Menu').select('*');
+    if (error) {
+      toast.error('Não foi possível carregar o cardápio.');
+      setMeals([]);
     } else {
-      const localMeals = JSON.parse(localStorage.getItem('rt_meals') || '[]');
-      setMeals(localMeals);
+      setMeals(data || []);
     }
+    setLoading(false);
+  }, [toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const normalized = useMemo(
+    () => meals.map((m) => ({ ...m, day: resolveDay(m, today) })),
+    [meals, today]
+  );
+
+  const visible = useMemo(() => {
+    const target = view === 'hoje' ? today : view === 'amanha' ? tomorrow : null;
+    const list = target === null ? [...normalized] : normalized.filter((m) => m.day === target);
+    return list.sort((a, b) => String(a.time).localeCompare(String(b.time)));
+  }, [normalized, view, today, tomorrow]);
+
+  const byDay = useMemo(() => {
+    const groups = new Map();
+    visible.forEach((m) => {
+      if (!groups.has(m.day)) groups.set(m.day, []);
+      groups.get(m.day).push(m);
+    });
+    return groups;
+  }, [visible]);
+
+  const openCreate = () => {
+    setDraft(EMPTY_DRAFT());
+    setEditingId(null);
+    setFormOpen(true);
   };
 
-  const addMeal = async () => {
-    if (!newMealMenu) return;
-    
-    const newMeal = { type: newMealType, time: newMealTime, menu: newMealMenu, served: false, date: new Date().toISOString() };
-    
-    const { data, error } = await supabase.from('Menu').insert([newMeal]).select();
-    
+  const openEdit = (meal) => {
+    setDraft({
+      type: meal.type || 'Café da Manhã',
+      time: meal.time || '08:00',
+      menu: meal.menu || '',
+      dayOfWeek: meal.day,
+    });
+    setEditingId(meal.id);
+    setFormOpen(true);
+  };
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (!draft.menu.trim()) return;
+
+    const payload = {
+      type: draft.type,
+      time: draft.time,
+      menu: draft.menu.trim(),
+      dayOfWeek: Number(draft.dayOfWeek),
+    };
+
+    setSaving(true);
+    const { error } = editingId
+      ? await supabase.from('Menu').update(payload).eq('id', editingId)
+      : await supabase.from('Menu').insert([{ ...payload, served: false }]);
+    setSaving(false);
+
     if (error) {
-      const updated = [...meals, { ...newMeal, id: Date.now() }];
-      setMeals(updated);
-      localStorage.setItem('rt_meals', JSON.stringify(updated));
-    } else if (data) {
-      setMeals([...meals, data[0]]);
+      toast.error('Erro ao salvar a refeição.');
+      return;
     }
-    
-    setNewMealMenu('');
+    setFormOpen(false);
+    setEditingId(null);
+    toast.success(editingId ? 'Refeição atualizada.' : 'Refeição adicionada ao cardápio.');
+    load();
   };
 
-  const deleteMeal = async (id) => {
-    if (!window.confirm('Excluir esta refeição?')) return;
-    const { error } = await supabase.from('Menu').delete().eq('id', id);
+  const remove = async (meal) => {
+    const ok = await confirm({
+      title: 'Excluir refeição',
+      message: `"${meal.type}" de ${DIAS_SEMANA[meal.day]} será removida do cardápio.`,
+      confirmLabel: 'Excluir',
+    });
+    if (!ok) return;
+
+    const { error } = await supabase.from('Menu').delete().eq('id', meal.id);
     if (error) {
-      const updated = meals.filter(m => m.id !== id);
-      setMeals(updated);
-      localStorage.setItem('rt_meals', JSON.stringify(updated));
-    } else {
-      setMeals(meals.filter(m => m.id !== id));
+      toast.error('Erro ao excluir a refeição.');
+      return;
     }
+    setMeals((prev) => prev.filter((m) => m.id !== meal.id));
+    toast.success('Refeição excluída.');
   };
 
-  const markAsServed = async (id) => {
-    const meal = meals.find(m => m.id === id);
-    if (!meal) return;
-    
-    const newServedState = !meal.served;
-    setMeals(meals.map(m => m.id === id ? { ...m, served: newServedState } : m));
+  const toggleServed = async (meal) => {
+    const next = !meal.served;
+    setMeals((prev) => prev.map((m) => (m.id === meal.id ? { ...m, served: next } : m)));
 
-    const { error } = await supabase.from('Menu').update({ served: newServedState }).eq('id', id);
+    const { error } = await supabase.from('Menu').update({ served: next }).eq('id', meal.id);
     if (error) {
-      const updated = meals.map(m => m.id === id ? { ...m, served: newServedState } : m);
-      localStorage.setItem('rt_meals', JSON.stringify(updated));
+      setMeals((prev) => prev.map((m) => (m.id === meal.id ? { ...m, served: !next } : m)));
+      toast.error('Não foi possível registrar. Verifique a conexão.');
     }
   };
+
+  const renderMeal = (meal) => (
+    <Card key={meal.id} accent={meal.served ? 'success' : 'warning'}>
+      <CardBody tight>
+        <div className="u-between u-gap-3" style={{ marginBottom: 'var(--space-2)' }}>
+          <div className="u-row u-gap-2" style={{ minWidth: 0 }}>
+            <h3 style={{ fontSize: 'var(--text-md)' }}>{meal.type}</h3>
+            <Badge tone="neutral" icon={Clock}>{meal.time}</Badge>
+          </div>
+          {meal.served && <Badge tone="success" icon={CheckCircle2}>Servida</Badge>}
+        </div>
+
+        <p style={{ color: 'var(--text)', marginBottom: 'var(--space-4)' }}>{meal.menu}</p>
+
+        <div className="u-row u-gap-2">
+          {!meal.served && (
+            <Button variant="primary" size="sm" icon={Utensils} onClick={() => toggleServed(meal)} className="u-grow">
+              Marcar como servida
+            </Button>
+          )}
+          {meal.served && (
+            <Button variant="ghost" size="sm" onClick={() => toggleServed(meal)}>
+              Desfazer
+            </Button>
+          )}
+          {isManager && (
+            <>
+              <Button variant="secondary" size="sm" iconOnly icon={Pencil}
+                onClick={() => openEdit(meal)} aria-label="Editar refeição" />
+              <Button variant="danger-ghost" size="sm" iconOnly icon={Trash2}
+                onClick={() => remove(meal)} aria-label="Excluir refeição" />
+            </>
+          )}
+        </div>
+      </CardBody>
+    </Card>
+  );
 
   return (
     <div>
-      <h2>O que servir hoje?</h2>
+      <PageHeader
+        title="Cardápio"
+        description="Refeições planejadas e o que já foi servido."
+        actions={
+          isManager && (
+            <Button variant="primary" icon={Plus} onClick={openCreate}>
+              Nova refeição
+            </Button>
+          )
+        }
+      />
 
-      {role === 'admin' && (
-        <div className="card" style={{ marginBottom: '24px', padding: '16px', background: 'var(--bg-secondary)' }}>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '12px' }}>Cadastrar Refeição (Visão Diretoria)</h3>
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
-            <select 
-              className="textarea-huge" 
-              style={{ flex: 1, minHeight: '40px', padding: '8px', fontSize: '1rem' }}
-              value={newMealType}
-              onChange={(e) => setNewMealType(e.target.value)}
-            >
-              <option>Café da Manhã</option>
-              <option>Lanche da Manhã</option>
-              <option>Almoço</option>
-              <option>Lanche da Tarde</option>
-              <option>Jantar</option>
-              <option>Ceia</option>
-            </select>
-            <input 
-              type="time" 
-              className="textarea-huge" 
-              style={{ flex: 1, minHeight: '40px', padding: '8px', fontSize: '1rem' }}
-              value={newMealTime}
-              onChange={(e) => setNewMealTime(e.target.value)}
-            />
-          </div>
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <input 
-              type="text" 
-              placeholder="O que será servido? (Ex: Arroz, feijão, frango, salada)" 
-              className="textarea-huge" 
-              style={{ flex: 3, minHeight: '40px', padding: '8px', fontSize: '1rem' }}
-              value={newMealMenu}
-              onChange={(e) => setNewMealMenu(e.target.value)}
-            />
-            <button className="btn btn-primary" onClick={addMeal}>Adicionar</button>
-          </div>
+      <div style={{ marginBottom: 'var(--space-5)' }}>
+        <Segmented
+          ariaLabel="Período do cardápio"
+          value={view}
+          onChange={setView}
+          block
+          options={[
+            { value: 'hoje', label: 'Hoje' },
+            { value: 'amanha', label: 'Amanhã' },
+            { value: 'semana', label: 'Semana' },
+          ]}
+        />
+      </div>
+
+      {loading ? (
+        <SkeletonList count={3} />
+      ) : visible.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={Utensils}
+            title="Nenhuma refeição planejada"
+            description={
+              view === 'semana'
+                ? 'O cardápio da semana ainda não foi montado.'
+                : `Não há refeições cadastradas para ${view === 'hoje' ? 'hoje' : 'amanhã'}.`
+            }
+            action={isManager && <Button variant="primary" icon={Plus} onClick={openCreate}>Planejar cardápio</Button>}
+          />
+        </Card>
+      ) : view === 'semana' ? (
+        <div className="u-stack u-gap-8">
+          {DIAS_SEMANA.map((dayName, idx) => {
+            const dayMeals = byDay.get(idx);
+            if (!dayMeals?.length) return null;
+            return (
+              <section key={idx}>
+                <div className="u-row u-gap-2" style={{ marginBottom: 'var(--space-3)' }}>
+                  <h2 style={{ fontSize: 'var(--text-md)' }}>{dayName}</h2>
+                  {idx === today && <Badge tone="primary">Hoje</Badge>}
+                </div>
+                <div className="grid-cards">{dayMeals.map(renderMeal)}</div>
+              </section>
+            );
+          })}
         </div>
+      ) : (
+        <div className="list">{visible.map(renderMeal)}</div>
       )}
-      
-      {meals.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Nenhuma refeição cadastrada para hoje.</p>}
-      {meals.map(meal => (
-        <div key={meal.id} className="card" style={{ borderLeft: meal.served ? '6px solid var(--secondary)' : '6px solid var(--warning)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)' }}>{meal.type}</h3>
-            <span style={{ fontSize: '1.2rem', color: 'var(--text-muted)', fontWeight: '600' }}>{meal.time}</span>
-          </div>
-          
-          <p style={{ fontSize: '1.2rem', marginBottom: '20px', lineHeight: '1.5' }}>
-            {meal.menu}
-          </p>
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            {meal.served ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--secondary)', fontSize: '1.2rem', fontWeight: 'bold' }}>
-                <CheckCircle2 size={28} />
-                Refeição já servida
-              </div>
-            ) : (
-              <button className="btn btn-primary" style={{ flex: 1, padding: '12px', fontSize: '1.1rem' }} onClick={() => markAsServed(meal.id)}>
-                <Utensils size={24} style={{ marginRight: '8px' }} />
-                Marcar como Servida
-              </button>
-            )}
 
-            {role === 'admin' && (
-              <button 
-                className="btn" 
-                style={{ padding: '8px 16px', color: 'var(--danger)', background: 'transparent', marginLeft: '12px', border: '1px solid var(--border)' }}
-                onClick={() => deleteMeal(meal.id)}
-              >
-                Excluir
-              </button>
-            )}
+      <Modal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editingId ? 'Editar refeição' : 'Nova refeição'}
+        description="O cardápio se repete toda semana no dia escolhido."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setFormOpen(false)}>Cancelar</Button>
+            <Button variant="primary" onClick={save} loading={saving}>
+              {editingId ? 'Salvar alterações' : 'Adicionar'}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={save} className="u-stack u-gap-4">
+          <div className="field-row">
+            <SelectField
+              label="Dia da semana" icon={CalendarDays}
+              value={draft.dayOfWeek}
+              onChange={(e) => setDraft((d) => ({ ...d, dayOfWeek: e.target.value }))}
+            >
+              {DIAS_SEMANA.map((day, idx) => (
+                <option key={idx} value={idx}>{day}</option>
+              ))}
+            </SelectField>
+
+            <SelectField
+              label="Refeição"
+              value={draft.type}
+              onChange={(e) => setDraft((d) => ({ ...d, type: e.target.value }))}
+            >
+              {MEAL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </SelectField>
           </div>
-        </div>
-      ))}
+
+          <TextField
+            label="Horário" type="time" required
+            value={draft.time}
+            onChange={(e) => setDraft((d) => ({ ...d, time: e.target.value }))}
+          />
+
+          <TextField
+            label="O que será servido" required
+            placeholder="Ex.: Arroz, feijão, frango grelhado e salada"
+            value={draft.menu}
+            onChange={(e) => setDraft((d) => ({ ...d, menu: e.target.value }))}
+          />
+        </form>
+      </Modal>
     </div>
   );
 }

@@ -1,217 +1,280 @@
-import React, { useState, useEffect } from 'react';
-import { Pill, CheckCircle2, XCircle, Send, Clock, AlertTriangle } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle, CheckCircle2, Clock, Pill, Send, XCircle,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import {
+  Alert, Badge, Button, Card, CardBody, CardHeader, EmptyState, PageHeader,
+  Segmented, SkeletonList, Textarea, useToast,
+} from '../ui';
+
+const ALL = '__todos__';
 
 export default function MedicationAdmin() {
-  const [meds, setMeds] = useState([]);
-  const [currentTimeFilter, setCurrentTimeFilter] = useState('');
-  const [availableTimes, setAvailableTimes] = useState([]);
-  const [stockAlert, setStockAlert] = useState(null);
+  const toast = useToast();
 
+  const [doses, setDoses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [timeFilter, setTimeFilter] = useState(ALL);
   const [refusingId, setRefusingId] = useState(null);
   const [justification, setJustification] = useState('');
 
-  useEffect(() => {
-    loadMedications();
-  }, []);
+  const load = useCallback(async () => {
+    setLoading(true);
 
-  const loadMedications = async () => {
-    // Busca do banco
-    const { data } = await supabase.from('Medication').select('*');
-    const localPrescriptions = JSON.parse(localStorage.getItem('rt_prescriptions') || '{}');
-    const localStock = JSON.parse(localStorage.getItem('rt_stock') || '[]');
+    // Estoque e horários ainda vivem parcialmente no navegador
+    // (ver aviso na tela). A leitura do Supabase mantém o estoque
+    // sincronizado quando a tabela já possui os dados.
+    const { error } = await supabase.from('Medication').select('*');
+    if (error) toast.error('Não foi possível consultar o estoque de medicamentos.');
 
-    let allMeds = [];
-    let timesSet = new Set();
+    let localStock = [];
+    try {
+      localStock = JSON.parse(localStorage.getItem('rt_stock') || '[]');
+    } catch {
+      localStock = [];
+    }
 
-    // Se houver no localStock (que contém os horários simulados criados no PharmacyStock)
-    if (localStock.length > 0) {
-      localStock.forEach(item => {
-        if (item.times) {
-          item.times.forEach(t => {
-            timesSet.add(t);
-            allMeds.push({
-              id: `${item.id}-${t}`,
-              realId: item.id,
-              name: item.name,
-              resident: item.resident,
-              time: t,
-              status: 'pending',
-              qty: item.qty,
-              minQty: item.minQty
-            });
-          });
-        }
+    const list = [];
+    localStock.forEach((item) => {
+      (item.times || []).forEach((time) => {
+        list.push({
+          id: `${item.id}-${time}`,
+          stockId: item.id,
+          name: item.name,
+          resident: item.resident || 'Geral',
+          time,
+          qty: item.qty,
+          minQty: item.minQty,
+          status: 'pending',
+        });
       });
-    }
+    });
 
-    const timesArray = Array.from(timesSet).sort();
-    setAvailableTimes(timesArray);
-    if (timesArray.length > 0 && !currentTimeFilter) {
-      // Opcionalmente podemos selecionar o primeiro, ou exibir todos
-      setCurrentTimeFilter('Todos');
-    }
+    setDoses(list);
+    setLoading(false);
+  }, [toast]);
 
-    setMeds(allMeds);
+  useEffect(() => { load(); }, [load]);
+
+  const times = useMemo(
+    () => Array.from(new Set(doses.map((d) => d.time))).sort(),
+    [doses]
+  );
+
+  const visible = useMemo(
+    () => (timeFilter === ALL ? doses : doses.filter((d) => d.time === timeFilter)),
+    [doses, timeFilter]
+  );
+
+  const byResident = useMemo(() => {
+    const groups = new Map();
+    visible.forEach((dose) => {
+      if (!groups.has(dose.resident)) groups.set(dose.resident, []);
+      groups.get(dose.resident).push(dose);
+    });
+    groups.forEach((list) => list.sort((a, b) => a.time.localeCompare(b.time)));
+    return groups;
+  }, [visible]);
+
+  const pending = doses.filter((d) => d.status === 'pending').length;
+
+  const administer = async (dose) => {
+    setDoses((prev) => prev.map((d) => (d.id === dose.id ? { ...d, status: 'administered' } : d)));
+
+    // Baixa de estoque
+    try {
+      const stock = JSON.parse(localStorage.getItem('rt_stock') || '[]');
+      const idx = stock.findIndex((s) => s.id === dose.stockId);
+      if (idx >= 0) {
+        stock[idx].qty = Math.max(0, (stock[idx].qty || 0) - 1);
+        localStorage.setItem('rt_stock', JSON.stringify(stock));
+
+        if (stock[idx].qty <= stock[idx].minQty) {
+          toast.warning(
+            `Estoque baixo: restam ${stock[idx].qty} unidades de ${stock[idx].name}.`
+          );
+        }
+        if (!Number.isNaN(Number(dose.stockId))) {
+          await supabase.from('Medication').update({ stock: stock[idx].qty }).eq('id', dose.stockId);
+        }
+      }
+    } catch {
+      toast.error('Não foi possível atualizar o estoque.');
+    }
   };
 
-  const handleAdminister = async (id, realId) => {
-    setMeds(meds.map(m => m.id === id ? { ...m, status: 'administered' } : m));
-    
-    // Desconta do estoque
-    const localStock = JSON.parse(localStorage.getItem('rt_stock') || '[]');
-    const stockItemIndex = localStock.findIndex(s => s.id === realId);
-    
-    if (stockItemIndex >= 0) {
-      localStock[stockItemIndex].qty -= 1;
-      const newQty = localStock[stockItemIndex].qty;
-      const minQty = localStock[stockItemIndex].minQty;
-      
-      if (newQty <= minQty) {
-        setStockAlert(`Atenção: O estoque de ${localStock[stockItemIndex].name} está acabando! Restam apenas ${newQty} unidades.`);
-        setTimeout(() => setStockAlert(null), 5000);
-      }
-      
-      localStorage.setItem('rt_stock', JSON.stringify(localStock));
-
-      // Tenta atualizar no Supabase (se for numérico)
-      if (!isNaN(parseInt(realId))) {
-        await supabase.from('Medication').update({ stock: newQty }).eq('id', realId);
-      }
+  const confirmRefusal = (dose) => {
+    if (!justification.trim()) {
+      toast.warning('A justificativa da recusa é obrigatória.');
+      return;
     }
-  };
-
-  const handleRefuseClick = (id) => {
-    setRefusingId(id);
+    setDoses((prev) =>
+      prev.map((d) =>
+        d.id === dose.id ? { ...d, status: 'refused', justification: justification.trim() } : d
+      )
+    );
+    setRefusingId(null);
     setJustification('');
   };
 
-  const confirmRefusal = () => {
-    if (justification.trim() === '') {
-      alert("A justificativa é obrigatória.");
-      return;
-    }
-    setMeds(meds.map(m => m.id === refusingId ? { ...m, status: 'refused', justification } : m));
-    setRefusingId(null);
-  };
-
-  const filteredMeds = currentTimeFilter === 'Todos' || !currentTimeFilter 
-    ? meds 
-    : meds.filter(m => m.time === currentTimeFilter);
-
-  // Agrupa os medicamentos filtrados por morador
-  const groupedMeds = filteredMeds.reduce((acc, med) => {
-    if (!acc[med.resident]) acc[med.resident] = [];
-    acc[med.resident].push(med);
-    return acc;
-  }, {});
-
-  // Ordena os medicamentos de cada morador por horário
-  Object.keys(groupedMeds).forEach(res => {
-    groupedMeds[res].sort((a, b) => a.time.localeCompare(b.time));
-  });
+  if (loading) {
+    return (
+      <div>
+        <PageHeader title="Medicação" description="Carregando…" />
+        <SkeletonList count={3} />
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2 style={{ fontSize: '1.4rem' }}>Check-list Medicações</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Clock size={16} color="var(--primary)" />
-          <select 
-            className="textarea-huge" 
-            style={{ minHeight: '36px', padding: '6px 12px', fontSize: '0.95rem', width: 'auto' }}
-            value={currentTimeFilter}
-            onChange={(e) => setCurrentTimeFilter(e.target.value)}
-          >
-            <option value="Todos">Todos os horários</option>
-            {availableTimes.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
+      <PageHeader
+        title="Checagem de medicação"
+        description={
+          pending > 0
+            ? `${pending} dose(s) pendente(s) no período exibido.`
+            : 'Todas as doses do período foram checadas.'
+        }
+      />
+
+      {/* Transparência sobre a limitação atual — a checagem ainda não
+          é arquivada em banco, e a equipe precisa saber disso. */}
+      <div style={{ marginBottom: 'var(--space-5)' }}>
+        <Alert tone="warning" title="Checagem ainda não arquivada em prontuário">
+          As marcações desta tela valem apenas para a sessão atual e se perdem ao
+          recarregar a página. O arquivamento definitivo (quem administrou, quando
+          e a justificativa de recusa) depende da criação da tabela de administrações,
+          prevista para a próxima etapa.
+        </Alert>
       </div>
 
-      {stockAlert && (
-        <div className="card" style={{ background: 'var(--danger-light)', borderLeft: '4px solid var(--danger)', padding: '12px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <AlertTriangle size={20} color="var(--danger)" />
-          <span style={{ color: 'var(--danger)', fontWeight: 'bold', fontSize: '0.95rem' }}>{stockAlert}</span>
+      {times.length > 1 && (
+        <div style={{ marginBottom: 'var(--space-5)', overflowX: 'auto' }}>
+          <Segmented
+            ariaLabel="Filtrar por horário"
+            value={timeFilter}
+            onChange={setTimeFilter}
+            options={[
+              { value: ALL, label: 'Todos', icon: Clock },
+              ...times.map((t) => ({ value: t, label: t })),
+            ]}
+          />
         </div>
       )}
 
-      {Object.keys(groupedMeds).length === 0 ? (
-        <p style={{ color: 'var(--text-muted)' }}>Nenhuma medicação encontrada para o filtro selecionado.</p>
+      {byResident.size === 0 ? (
+        <Card>
+          <EmptyState
+            icon={Pill}
+            title="Nenhuma medicação para este período"
+            description="Cadastre os medicamentos e seus horários em Estoque Enfermagem."
+          />
+        </Card>
       ) : (
-        Object.keys(groupedMeds).map(residentName => (
-          <div key={residentName} className="card" style={{ padding: '0', marginBottom: '16px', overflow: 'hidden' }}>
-            <div style={{ backgroundColor: 'var(--primary-light)', padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
-              <h3 style={{ fontSize: '1.2rem', color: 'var(--primary-dark)', margin: 0 }}>{residentName}</h3>
-            </div>
-            
-            <div style={{ padding: '12px 16px' }}>
-              {groupedMeds[residentName].map((med, idx) => (
-                <div key={med.id} style={{ 
-                  paddingBottom: idx === groupedMeds[residentName].length - 1 ? '0' : '12px', 
-                  marginBottom: idx === groupedMeds[residentName].length - 1 ? '0' : '12px', 
-                  borderBottom: idx === groupedMeds[residentName].length - 1 ? 'none' : '1px solid var(--border)' 
-                }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <p style={{ fontSize: '1rem', color: 'var(--text-main)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Clock size={14} color="var(--primary)" /> {med.time}
-                        </p>
-                        <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                          <Pill size={14} /> {med.name}
-                        </p>
+        <div className="u-stack u-gap-4">
+          {Array.from(byResident.entries()).map(([resident, list]) => (
+            <Card key={resident}>
+              <CardHeader title={resident} icon={Pill} />
+              <CardBody flush>
+                {list.map((dose, idx) => (
+                  <div
+                    key={dose.id}
+                    style={{
+                      padding: 'var(--space-4) var(--space-5)',
+                      borderBottom:
+                        idx === list.length - 1 ? 'none' : '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    <div className="u-between u-gap-3" style={{ marginBottom: 'var(--space-3)' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="u-row u-gap-2" style={{ marginBottom: 'var(--space-1)' }}>
+                          <Badge tone="primary" icon={Clock}>{dose.time}</Badge>
+                          {dose.qty <= dose.minQty && (
+                            <Badge tone="danger" icon={AlertTriangle}>Estoque baixo</Badge>
+                          )}
+                        </div>
+                        <div style={{ fontWeight: 'var(--weight-medium)', color: 'var(--text-strong)' }}>
+                          {dose.name}
+                        </div>
                       </div>
 
-                      {med.status === 'administered' && (
-                        <span style={{ color: 'var(--secondary)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <CheckCircle2 size={16} /> Concluído
-                        </span>
+                      {dose.status === 'administered' && (
+                        <Badge tone="success" icon={CheckCircle2}>Administrado</Badge>
                       )}
-
-                      {med.status === 'refused' && (
-                        <span style={{ color: 'var(--danger)', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <XCircle size={16} /> Recusado
-                        </span>
+                      {dose.status === 'refused' && (
+                        <Badge tone="danger" icon={XCircle}>Recusado</Badge>
                       )}
                     </div>
 
-                    {med.status === 'pending' && refusingId !== med.id && (
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                        <button className="btn btn-success" style={{ flex: 1, padding: '8px', fontSize: '0.9rem' }} onClick={() => handleAdminister(med.id, med.realId)}>
-                          <CheckCircle2 size={16} /> Dar Remédio
-                        </button>
-                        <button className="btn" style={{ flex: 1, padding: '8px', fontSize: '0.9rem', backgroundColor: 'var(--danger-light)', color: 'var(--danger)', border: '1px solid var(--danger)' }} onClick={() => handleRefuseClick(med.id)}>
-                          <XCircle size={16} /> Recusou
-                        </button>
+                    {dose.status === 'pending' && refusingId !== dose.id && (
+                      <div className="u-row u-gap-2">
+                        <Button
+                          variant="success" size="sm" icon={CheckCircle2}
+                          className="u-grow" onClick={() => administer(dose)}
+                        >
+                          Administrado
+                        </Button>
+                        <Button
+                          variant="secondary" size="sm" icon={XCircle}
+                          className="u-grow"
+                          onClick={() => { setRefusingId(dose.id); setJustification(''); }}
+                        >
+                          Recusou
+                        </Button>
                       </div>
                     )}
-                    
-                    {refusingId === med.id && (
-                      <div style={{ marginTop: '8px', background: 'var(--background)', padding: '12px', borderRadius: '8px' }}>
-                        <textarea 
-                          className="textarea-huge" 
-                          style={{ minHeight: '60px', marginBottom: '8px', fontSize: '0.9rem', padding: '8px' }}
-                          placeholder="Motivo da recusa..."
+
+                    {refusingId === dose.id && (
+                      <div
+                        style={{
+                          padding: 'var(--space-3)',
+                          background: 'var(--surface-sunken)',
+                          borderRadius: 'var(--radius-md)',
+                        }}
+                      >
+                        <Textarea
+                          placeholder="Motivo da recusa (obrigatório)…"
+                          rows={2}
                           value={justification}
                           onChange={(e) => setJustification(e.target.value)}
+                          style={{ marginBottom: 'var(--space-3)' }}
+                          autoFocus
                         />
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button className="btn" style={{ flex: 1, padding: '8px', fontSize: '0.9rem', backgroundColor: 'white', border: '1px solid var(--border)' }} onClick={() => setRefusingId(null)}>Cancelar</button>
-                          <button className="btn btn-primary" style={{ flex: 1, padding: '8px', fontSize: '0.9rem' }} onClick={confirmRefusal}><Send size={16}/> Confirmar</button>
+                        <div className="u-row u-gap-2">
+                          <Button
+                            variant="secondary" size="sm" className="u-grow"
+                            onClick={() => setRefusingId(null)}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            variant="primary" size="sm" icon={Send} className="u-grow"
+                            onClick={() => confirmRefusal(dose)}
+                          >
+                            Registrar recusa
+                          </Button>
                         </div>
                       </div>
                     )}
 
-                    {med.status === 'refused' && (
-                      <p style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Motivo: {med.justification}</p>
+                    {dose.status === 'refused' && dose.justification && (
+                      <p
+                        style={{
+                          fontSize: 'var(--text-sm)',
+                          color: 'var(--text-muted)',
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        Motivo: {dose.justification}
+                      </p>
                     )}
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))
+                ))}
+              </CardBody>
+            </Card>
+          ))}
+        </div>
       )}
     </div>
   );

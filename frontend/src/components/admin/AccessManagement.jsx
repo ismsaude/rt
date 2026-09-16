@@ -1,187 +1,311 @@
-import React, { useState, useEffect } from 'react';
-import { Shield, Trash2, Edit2, Save, UserPlus, CheckCircle2 } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Eye, EyeOff, Pencil, Plus, Save, Shield, Trash2, UserPlus, Users, X,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { uid } from '../../lib/id';
+import {
+  Alert, Avatar, Badge, Button, Card, EmptyState, Modal, PageHeader,
+  SelectField, SkeletonList, Table, TextField, useConfirm, useToast,
+} from '../ui';
+
+const ROLES = [
+  { value: 'CUIDADOR',   label: 'Cuidador(a)',      description: 'Tarefas, cardápio e passagem de plantão', tone: 'primary' },
+  { value: 'ENFERMEIRO', label: 'Téc. enfermagem',  description: 'Sinais vitais, medicação, estoque e agenda', tone: 'info' },
+  { value: 'ADMIN',      label: 'Supervisão',       description: 'Acesso completo ao sistema', tone: 'warning' },
+  { value: 'DIRETOR',    label: 'Diretoria',        description: 'Acesso completo e conta protegida', tone: 'danger' },
+];
+
+const roleMeta = (value) => ROLES.find((r) => r.value === value) || ROLES[0];
+
+const EMPTY = { name: '', cpf: '', email: '', password: '', role: 'CUIDADOR', job_title: '', professional_id: '' };
 
 export default function AccessManagement({ currentUser }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [form, setForm] = useState(EMPTY);
 
-  const [formData, setFormData] = useState({ name: '', cpf: '', email: '', password: '', role: 'CUIDADOR' });
-
-  const fetchUsers = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from('User').select('*').order('name');
-    if (data) setUsers(data);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const handleSuccess = () => {
-    setSuccess(true);
-    setTimeout(() => setSuccess(false), 3000);
-  };
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    
-    if (editingId) {
-      const { error } = await supabase.from('User').update({ ...formData, updatedAt: new Date().toISOString() }).eq('id', editingId);
-      if (!error) {
-        handleSuccess();
-        setFormData({ name: '', cpf: '', email: '', password: '', role: 'CUIDADOR' });
-        setEditingId(null);
-        fetchUsers();
-      } else alert(error.message);
+    const { data, error } = await supabase.from('User').select('*').order('name');
+    if (error) {
+      toast.error('Não foi possível carregar a equipe.');
+      setUsers([]);
     } else {
-      const { error } = await supabase.from('User').insert([{ id: crypto.randomUUID(), ...formData, updatedAt: new Date().toISOString() }]);
-      if (!error) {
-        handleSuccess();
-        setFormData({ name: '', cpf: '', email: '', password: '', role: 'CUIDADOR' });
-        fetchUsers();
-      } else alert(error.message);
+      setUsers(data || []);
     }
-    setSaving(false);
-  };
+    setLoading(false);
+  }, [toast]);
 
-  const deleteUser = async (u) => {
-    if (u.role === 'DIRETOR') {
-      alert('Contas de Diretor Geral são blindadas e não podem ser excluídas por segurança.');
-      return;
-    }
+  useEffect(() => { load(); }, [load]);
 
-    if (window.confirm('Tem certeza que deseja remover o acesso deste usuário?')) {
-      await supabase.from('User').delete().eq('id', u.id);
-      fetchUsers();
-    }
-  };
-
-  const editUser = (u) => {
-    if (u.role === 'DIRETOR' && currentUser?.role !== 'DIRETOR') {
-      alert('Contas de Diretor são blindadas. Apenas o próprio Diretor pode editar seus dados.');
-      return;
-    }
-    setEditingId(u.id);
-    setFormData({ name: u.name, cpf: u.cpf || '', email: u.email, password: u.password, role: u.role });
-  };
-
-  const cancelEdit = () => {
+  const openCreate = () => {
+    setForm(EMPTY);
     setEditingId(null);
-    setFormData({ name: '', cpf: '', email: '', password: '', role: 'CUIDADOR' });
+    setShowPassword(false);
+    setFormOpen(true);
+  };
+
+  const openEdit = (user) => {
+    if (user.role === 'DIRETOR' && currentUser?.role !== 'DIRETOR') {
+      toast.warning('Contas de diretoria só podem ser editadas pelo próprio diretor.');
+      return;
+    }
+    // A senha não é trazida para a tela: em branco significa "manter a atual".
+    setForm({
+      name: user.name || '',
+      cpf: user.cpf || '',
+      email: user.email || '',
+      password: '',
+      role: user.role || 'CUIDADOR',
+      job_title: user.job_title || '',
+      professional_id: user.professional_id || '',
+    });
+    setEditingId(user.id);
+    setShowPassword(false);
+    setFormOpen(true);
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+
+    if (!form.name.trim() || !form.email.trim()) {
+      toast.warning('Nome e e-mail são obrigatórios.');
+      return;
+    }
+    if (!editingId && form.password.length < 6) {
+      toast.warning('Defina uma senha inicial de ao menos 6 caracteres.');
+      return;
+    }
+
+    setSaving(true);
+
+    const payload = {
+      name: form.name.trim(),
+      cpf: form.cpf.trim(),
+      email: form.email.trim().toLowerCase(),
+      role: form.role,
+      job_title: form.job_title.trim(),
+      professional_id: form.professional_id.trim(),
+      updatedAt: new Date().toISOString(),
+    };
+    // Só grava a senha quando o campo foi preenchido.
+    if (form.password) payload.password = form.password;
+
+    const { error } = editingId
+      ? await supabase.from('User').update(payload).eq('id', editingId)
+      : await supabase.from('User').insert([{ id: uid(), ...payload }]);
+
+    setSaving(false);
+
+    if (error) {
+      toast.error(`Erro ao salvar: ${error.message}`);
+      return;
+    }
+
+    setFormOpen(false);
+    setForm(EMPTY);
+    setEditingId(null);
+    toast.success(editingId ? 'Usuário atualizado.' : 'Usuário cadastrado.');
+    load();
+  };
+
+  const remove = async (user) => {
+    if (user.role === 'DIRETOR') {
+      toast.warning('Contas de diretoria são protegidas e não podem ser excluídas.');
+      return;
+    }
+
+    const ok = await confirm({
+      title: 'Remover acesso',
+      message: `${user.name} perderá o acesso ao sistema imediatamente.`,
+      warning: 'Os registros já lançados por esta pessoa permanecem no prontuário.',
+      confirmLabel: 'Remover acesso',
+    });
+    if (!ok) return;
+
+    const { error } = await supabase.from('User').delete().eq('id', user.id);
+    if (error) {
+      toast.error('Erro ao remover o acesso.');
+      return;
+    }
+    setUsers((prev) => prev.filter((u) => u.id !== user.id));
+    toast.success('Acesso removido.');
   };
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <div>
-          <h2 style={{ fontSize: '2rem', marginBottom: '8px' }}>Gestão de Acessos e Equipe</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Cadastre novos funcionários e gerencie as permissões.</p>
-        </div>
+      <PageHeader
+        title="Gestão de acessos"
+        description="Equipe cadastrada e o que cada perfil pode ver no sistema."
+        actions={
+          <Button variant="primary" icon={UserPlus} onClick={openCreate}>
+            Novo usuário
+          </Button>
+        }
+      />
+
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <Alert tone="danger" title="Senhas ainda são armazenadas sem criptografia">
+          Enquanto a autenticação não migrar para o Supabase Auth, as senhas ficam
+          legíveis no banco. Evite reutilizar senhas pessoais e trate este cadastro
+          como informação sensível.
+        </Alert>
       </div>
 
-      {success && (
-        <div style={{ background: 'var(--secondary-light)', color: 'var(--secondary)', padding: '16px', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
-          <CheckCircle2 /> {editingId ? 'Usuário atualizado com sucesso!' : 'Novo usuário cadastrado com sucesso!'}
-        </div>
+      {loading ? (
+        <SkeletonList count={4} />
+      ) : users.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={Users}
+            title="Nenhum usuário cadastrado"
+            description="Cadastre a equipe para liberar o acesso ao sistema."
+            action={<Button variant="primary" icon={UserPlus} onClick={openCreate}>Cadastrar usuário</Button>}
+          />
+        </Card>
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <th>Funcionário</th>
+              <th>Acesso</th>
+              <th>Perfil</th>
+              <th style={{ textAlign: 'right' }}>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((user) => {
+              const meta = roleMeta(user.role);
+              const protectedAccount = user.role === 'DIRETOR';
+              return (
+                <tr key={user.id}>
+                  <td>
+                    <div className="u-row u-gap-3">
+                      <Avatar name={user.name} size="sm" />
+                      <div style={{ minWidth: 0 }}>
+                        <div className="table__cell-strong">{user.name}</div>
+                        <div className="table__cell-muted" style={{ fontSize: 'var(--text-xs)' }}>
+                          CPF: {user.cpf || 'não informado'}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="table__cell-muted">{user.email}</td>
+                  <td>
+                    <Badge tone={meta.tone} icon={protectedAccount ? Shield : undefined}>
+                      {meta.label}
+                    </Badge>
+                  </td>
+                  <td>
+                    <div className="table__actions">
+                      <Button
+                        variant="ghost" size="sm" iconOnly icon={Pencil}
+                        onClick={() => openEdit(user)}
+                        aria-label={`Editar ${user.name}`}
+                      />
+                      <Button
+                        variant="danger-ghost" size="sm" iconOnly icon={Trash2}
+                        onClick={() => remove(user)}
+                        disabled={protectedAccount}
+                        aria-label={`Remover ${user.name}`}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
       )}
 
-      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        
-        {/* Form Column */}
-        <div className="card" style={{ flex: '1', minWidth: '100%', maxWidth: '400px' }}>
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-            {editingId ? <Edit2 size={20} /> : <UserPlus size={20} />} 
-            {editingId ? 'Editar Usuário' : 'Novo Membro da Equipe'}
-          </h3>
-          <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--border)' }}/>
-          
-          <form onSubmit={handleSave}>
-            <label className="input-label">Nome Completo</label>
-            <input required className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+      <Modal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editingId ? 'Editar usuário' : 'Novo membro da equipe'}
+        description={editingId ? 'Deixe a senha em branco para mantê-la inalterada.' : undefined}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setFormOpen(false)}>Cancelar</Button>
+            <Button variant="primary" icon={Save} onClick={submit} loading={saving}>
+              {editingId ? 'Salvar alterações' : 'Cadastrar'}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={submit} className="u-stack u-gap-4">
+          <TextField
+            label="Nome completo" required autoFocus
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          />
 
-            <label className="input-label">CPF</label>
-            <input required placeholder="000.000.000-00" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})} />
+          <div className="field-row">
+            <TextField
+              label="CPF" placeholder="000.000.000-00"
+              value={form.cpf}
+              onChange={(e) => setForm((f) => ({ ...f, cpf: e.target.value }))}
+            />
+            <TextField
+              label="E-mail de acesso" type="email" required
+              autoCapitalize="none" spellCheck="false"
+              value={form.email}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            />
+          </div>
 
-            <label className="input-label">Email (Login)</label>
-            <input required type="email" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+          <SelectField
+            label="Perfil de acesso"
+            hint={roleMeta(form.role).description}
+            value={form.role}
+            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+          >
+            {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </SelectField>
 
-            <label className="input-label">Cargo / Permissão</label>
-            <select className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
-              <option value="CUIDADOR">Cuidador(a) - Acesso Básico</option>
-              <option value="ENFERMEIRO">Téc. Enfermagem - Acesso Clínico</option>
-              <option value="ADMIN">Supervisora - Acesso Total (Admin)</option>
-              <option value="DIRETOR">Diretor Geral - Blindado</option>
-            </select>
+          <div className="field-row">
+            <TextField
+              label="Cargo na assinatura"
+              hint="Ex.: Supervisora Residência Terapêutica"
+              value={form.job_title}
+              onChange={(e) => setForm((f) => ({ ...f, job_title: e.target.value }))}
+            />
+            <TextField
+              label="Registro profissional"
+              hint="Ex.: CRESS 50.834, COREN-SP 123456"
+              value={form.professional_id}
+              onChange={(e) => setForm((f) => ({ ...f, professional_id: e.target.value }))}
+            />
+          </div>
 
-            <label className="input-label">Senha</label>
-            <input required type="text" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '24px' }} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
-
-            <div style={{ display: 'flex', gap: '12px' }}>
-              {editingId && (
-                <button type="button" className="btn" style={{ flex: 1, border: '1px solid var(--border)' }} onClick={cancelEdit}>Cancelar</button>
-              )}
-              <button type="submit" disabled={saving} className="btn btn-primary" style={{ flex: 2, padding: '12px' }}>
-                <Save size={20} /> {saving ? 'Salvando...' : editingId ? 'Atualizar' : 'Cadastrar'}
+          <TextField
+            label={editingId ? 'Nova senha (opcional)' : 'Senha inicial'}
+            type={showPassword ? 'text' : 'password'}
+            autoComplete="new-password"
+            required={!editingId}
+            hint={editingId ? 'Preencha apenas se quiser redefinir a senha.' : 'Mínimo de 6 caracteres.'}
+            value={form.password}
+            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+            action={
+              <button
+                type="button"
+                className="input-group__action"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+              >
+                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
-            </div>
-          </form>
-        </div>
-
-        {/* Table Column */}
-        <div className="card" style={{ flex: '2', padding: '0', overflowX: 'auto', minWidth: '100%' }}>
-          <table className="desktop-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr>
-                <th style={{ padding: '16px' }}>Nome & CPF</th>
-                <th style={{ padding: '16px' }}>Login e Cargo</th>
-                <th style={{ padding: '16px', textAlign: 'center' }}>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan="3" style={{ padding: '24px', textAlign: 'center' }}>Carregando usuários...</td></tr>
-              ) : (
-                users.map(u => (
-                  <tr key={u.id} style={{ borderBottom: '1px solid var(--border)', background: editingId === u.id ? 'var(--background)' : 'transparent' }}>
-                    <td style={{ padding: '16px' }}>
-                      <div style={{ fontWeight: 'bold' }}>{u.name}</div>
-                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '4px' }}>CPF: {u.cpf || 'Não cadastrado'}</div>
-                    </td>
-                    <td style={{ padding: '16px' }}>
-                      <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>{u.email}</div>
-                      <span style={{ 
-                        padding: '2px 8px', 
-                        borderRadius: '12px', 
-                        fontSize: '0.75rem', 
-                        fontWeight: 'bold',
-                        backgroundColor: (u.role === 'ADMIN' || u.role === 'DIRETOR') ? 'var(--danger-light)' : u.role === 'ENFERMEIRO' ? 'var(--info-light)' : 'var(--primary-light)',
-                        color: (u.role === 'ADMIN' || u.role === 'DIRETOR') ? 'var(--danger)' : u.role === 'ENFERMEIRO' ? 'var(--info)' : 'var(--primary-dark)'
-                      }}>
-                        {u.role === 'DIRETOR' ? 'Diretor Geral' : u.role === 'ADMIN' ? 'Supervisora' : u.role === 'ENFERMEIRO' ? 'Téc. Enfermagem' : 'Cuidador'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px', textAlign: 'center' }}>
-                      <button className="btn" style={{ padding: '8px', background: 'transparent', color: 'var(--primary)', marginRight: '8px' }} onClick={() => editUser(u)} title="Editar">
-                        <Edit2 size={18} />
-                      </button>
-                      <button className="btn" style={{ padding: '8px', background: 'transparent', color: 'var(--danger)', opacity: u.role === 'DIRETOR' ? 0.3 : 1, cursor: u.role === 'DIRETOR' ? 'not-allowed' : 'pointer' }} onClick={() => deleteUser(u)} title="Excluir">
-                        <Trash2 size={18} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-      </div>
+            }
+          />
+        </form>
+      </Modal>
     </div>
   );
 }

@@ -1,135 +1,315 @@
-import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Circle } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  CalendarClock, CheckCircle2, Circle, Clock, ListChecks, MapPin, Plus, Trash2, User,
+} from 'lucide-react';
+import { formatDateTime, toISODate } from '../lib/format';
+import { SOCIAL_EVENT_TYPES } from '../lib/clinical';
 import { supabase } from '../lib/supabase';
+import {
+  Badge, Button, Card, CardBody, CardHeader, EmptyState, Modal, PageHeader,
+  SkeletonList, TextField, useConfirm, useToast,
+} from './ui';
 
-export default function Dashboard({ role }) {
+/** Por horário previsto; sem horário vai para o fim da lista. */
+function sortTasks(list) {
+  return [...list].sort((a, b) => {
+    if (!a.time && !b.time) return String(a.title).localeCompare(String(b.title));
+    if (!a.time) return 1;
+    if (!b.time) return -1;
+    return String(a.time).localeCompare(String(b.time));
+  });
+}
+
+export default function Dashboard({ role, currentUser }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+
   const [tasks, setTasks] = useState([]);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskTime, setNewTaskTime] = useState('');
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState({ title: '', time: '' });
 
-  useEffect(() => {
-    fetchTasks();
-  }, []);
+  const isManager = role === 'admin';
 
-  const fetchTasks = async () => {
-    // Tenta buscar do Supabase (tabela Task precisa existir: id, title, time, done, created_at)
-    const { data, error } = await supabase.from('Task').select('*').order('time', { ascending: true });
-    if (data) {
-      setTasks(data);
+  const load = useCallback(async () => {
+    setLoading(true);
+    // Ordena no cliente: "time" é opcional e tarefas sem horário
+    // devem ficar no fim, o que o ORDER BY do banco não resolveria.
+    const hoje = toISODate(new Date());
+
+    const [{ data, error }, { data: evs }] = await Promise.all([
+      supabase.from('Task').select('*'),
+      supabase.from('Event').select('*').eq('date', hoje),
+    ]);
+
+    if (error) {
+      toast.error('Não foi possível carregar as tarefas.');
+      setTasks([]);
     } else {
-      // Fallback para localStorage caso a tabela não exista ainda
-      const localTasks = JSON.parse(localStorage.getItem('rt_tasks') || '[]');
-      setTasks(localTasks);
+      setTasks(sortTasks(data || []));
     }
-  };
 
-  const addTask = async () => {
-    if (!newTaskTitle || !newTaskTime) return;
-    
-    const newTask = { title: newTaskTitle, time: newTaskTime, done: false, created_at: new Date().toISOString() };
-    
-    const { data, error } = await supabase.from('Task').insert([newTask]).select();
-    
+    setEvents(
+      (evs || []).sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')))
+    );
+    setLoading(false);
+  }, [toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const addTask = async (e) => {
+    e.preventDefault();
+    if (!draft.title.trim() || !draft.time) return;
+
+    setSaving(true);
+    const { data, error } = await supabase
+      .from('Task')
+      .insert([{ title: draft.title.trim(), time: draft.time, isDone: false }])
+      .select();
+    setSaving(false);
+
     if (error) {
-      // Fallback
-      const updated = [...tasks, { ...newTask, id: Date.now() }];
-      setTasks(updated);
-      localStorage.setItem('rt_tasks', JSON.stringify(updated));
-    } else if (data) {
-      setTasks([...tasks, data[0]]);
+      toast.error('Erro ao cadastrar a tarefa.');
+      return;
     }
-    
-    setNewTaskTitle('');
-    setNewTaskTime('');
+    setTasks((prev) => sortTasks([...prev, ...(data || [])]));
+    setDraft({ title: '', time: '' });
+    setFormOpen(false);
+    toast.success('Tarefa cadastrada.');
   };
 
-  const toggleTask = async (id) => {
-    const task = tasks.find(t => t.id === id);
-    if (!task) return;
+  const toggleTask = async (task) => {
+    const next = !task.isDone;
 
-    const newDoneState = !task.done;
-    
-    // Otimista
-    setTasks(tasks.map(t => t.id === id ? { ...t, done: newDoneState } : t));
+    // Concluir registra quem e quando — desfazer limpa o rastro.
+    const patch = next
+      ? { isDone: true, doneAt: new Date().toISOString(), doneBy: currentUser?.name || 'Equipe' }
+      : { isDone: false, doneAt: null, doneBy: null };
 
-    const { error } = await supabase.from('Task').update({ done: newDoneState }).eq('id', id);
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, ...patch } : t)));
+
+    const { error } = await supabase.from('Task').update(patch).eq('id', task.id);
     if (error) {
-      // Fallback
-      const updated = tasks.map(t => t.id === id ? { ...t, done: newDoneState } : t);
-      localStorage.setItem('rt_tasks', JSON.stringify(updated));
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+      toast.error('Não foi possível salvar. Verifique a conexão.');
     }
   };
 
-  const deleteTask = async (id) => {
-    if (!window.confirm('Excluir esta tarefa?')) return;
-    const { error } = await supabase.from('Task').delete().eq('id', id);
+  const removeTask = async (task) => {
+    const ok = await confirm({
+      title: 'Excluir tarefa',
+      message: `A tarefa "${task.title}" será removida da rotina.`,
+      confirmLabel: 'Excluir',
+    });
+    if (!ok) return;
+
+    const { error } = await supabase.from('Task').delete().eq('id', task.id);
     if (error) {
-      const updated = tasks.filter(t => t.id !== id);
-      setTasks(updated);
-      localStorage.setItem('rt_tasks', JSON.stringify(updated));
-    } else {
-      setTasks(tasks.filter(t => t.id !== id));
+      toast.error('Erro ao excluir a tarefa.');
+      return;
     }
+    setTasks((prev) => prev.filter((t) => t.id !== task.id));
+    toast.success('Tarefa excluída.');
   };
+
+  const done = tasks.filter((t) => t.isDone).length;
 
   return (
     <div>
-      <h2>O que fazer hoje?</h2>
+      <PageHeader
+        title="Tarefas do dia"
+        description={
+          tasks.length > 0
+            ? `${done} de ${tasks.length} concluídas na rotina da casa.`
+            : 'Rotina de cuidados e organização da residência.'
+        }
+        actions={
+          isManager && (
+            <Button variant="primary" icon={Plus} onClick={() => setFormOpen(true)}>
+              Nova tarefa
+            </Button>
+          )
+        }
+      />
 
-      {role === 'admin' && (
-        <div className="card" style={{ marginBottom: '24px', padding: '16px', background: 'var(--bg-secondary)' }}>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '12px' }}>Cadastrar Nova Tarefa (Visão Diretoria)</h3>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <input 
-              type="text" 
-              placeholder="Descrição..." 
-              className="textarea-huge" 
-              style={{ flex: '2 1 150px', height: '40px', padding: '0 12px', fontSize: '0.95rem', marginBottom: 0 }}
-              value={newTaskTitle}
-              onChange={(e) => setNewTaskTitle(e.target.value)}
-            />
-            <input 
-              type="time" 
-              className="textarea-huge" 
-              style={{ flex: '1 1 80px', height: '40px', padding: '0 12px', fontSize: '0.95rem', marginBottom: 0 }}
-              value={newTaskTime}
-              onChange={(e) => setNewTaskTime(e.target.value)}
-            />
-            <button className="btn btn-primary" style={{ height: '40px', padding: '0 16px', flex: '1 1 100px' }} onClick={addTask}>Cadastrar</button>
-          </div>
+      {/* Compromissos do dia — a cuidadora precisa saber que alguém
+          sai para consulta antes de planejar o resto da rotina. */}
+      {!loading && events.length > 0 && (
+        <Card accent="warning" style={{ marginBottom: 'var(--space-5)' }}>
+          <CardHeader
+            icon={CalendarClock}
+            title={
+              events.length === 1
+                ? '1 compromisso hoje'
+                : `${events.length} compromissos hoje`
+            }
+            subtitle="Consultas, exames e saídas agendadas para a casa"
+          />
+          <CardBody tight>
+            <div className="u-stack u-gap-3">
+              {events.map((ev) => (
+                <div
+                  key={ev.id}
+                  style={{
+                    display: 'flex',
+                    gap: 'var(--space-3)',
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <Badge tone="warning" icon={Clock}>{ev.time}</Badge>
+                  <div className="u-grow" style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontWeight: 'var(--weight-semibold)',
+                        color: 'var(--text-strong)',
+                      }}
+                    >
+                      {ev.title}
+                    </div>
+                    <div
+                      className="u-row u-wrap u-gap-3 u-muted"
+                      style={{ fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)' }}
+                    >
+                      <span className="u-row u-gap-1">
+                        <User size={13} aria-hidden="true" /> {ev.resident_name}
+                      </span>
+                      {ev.location && (
+                        <span className="u-row u-gap-1">
+                          <MapPin size={13} aria-hidden="true" /> {ev.location}
+                        </span>
+                      )}
+                    </div>
+                    {ev.notes && (
+                      <p
+                        style={{
+                          fontSize: 'var(--text-sm)',
+                          color: 'var(--warning-text)',
+                          marginTop: 'var(--space-2)',
+                          fontWeight: 'var(--weight-medium)',
+                        }}
+                      >
+                        {ev.notes}
+                      </p>
+                    )}
+                  </div>
+                  {ev.type && (
+                    <Badge tone={SOCIAL_EVENT_TYPES.includes(ev.type) ? 'success' : 'info'}>
+                      {ev.type}
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {loading ? (
+        <SkeletonList count={4} />
+      ) : tasks.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={ListChecks}
+            title="Nenhuma tarefa cadastrada"
+            description={
+              isManager
+                ? 'Cadastre as tarefas recorrentes da casa para que a equipe acompanhe a rotina.'
+                : 'A supervisão ainda não cadastrou tarefas para hoje.'
+            }
+            action={
+              isManager && (
+                <Button variant="primary" icon={Plus} onClick={() => setFormOpen(true)}>
+                  Cadastrar tarefa
+                </Button>
+              )
+            }
+          />
+        </Card>
+      ) : (
+        <div className="list">
+          {tasks.map((task) => (
+            <Card key={task.id} accent={task.isDone ? 'success' : 'primary'}>
+              <CardBody tight>
+                <div className="u-row u-gap-3">
+                  <button
+                    onClick={() => toggleTask(task)}
+                    aria-pressed={!!task.isDone}
+                    aria-label={task.isDone ? `Desmarcar ${task.title}` : `Concluir ${task.title}`}
+                    style={{
+                      display: 'flex',
+                      color: task.isDone ? 'var(--success)' : 'var(--gray-300)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {task.isDone ? <CheckCircle2 size={28} /> : <Circle size={28} />}
+                  </button>
+
+                  <button
+                    onClick={() => toggleTask(task)}
+                    className="u-grow"
+                    style={{ textAlign: 'left', minWidth: 0 }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 'var(--text-base)',
+                        fontWeight: 'var(--weight-medium)',
+                        color: task.isDone ? 'var(--text-subtle)' : 'var(--text-strong)',
+                        textDecoration: task.isDone ? 'line-through' : 'none',
+                      }}
+                    >
+                      {task.title}
+                    </div>
+                    <div style={{ marginTop: 'var(--space-1)' }}>
+                      <Badge tone={task.isDone ? 'success' : 'neutral'}>
+                        {task.isDone
+                          ? `Concluída por ${task.doneBy || 'equipe'}${task.doneAt ? ` · ${formatDateTime(task.doneAt)}` : ''}`
+                          : task.time ? `Prevista para ${task.time}` : 'Sem horário definido'}
+                      </Badge>
+                    </div>
+                  </button>
+
+                  {isManager && (
+                    <Button
+                      variant="danger-ghost" size="sm" iconOnly icon={Trash2}
+                      onClick={() => removeTask(task)}
+                      aria-label={`Excluir ${task.title}`}
+                    />
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+          ))}
         </div>
       )}
-      
-      <div className="task-list">
-        {tasks.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Nenhuma tarefa cadastrada para hoje.</p>}
-        {tasks.map(task => (
-          <div 
-            key={task.id} 
-            className={`task-item ${task.done ? 'completed' : ''}`}
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', flex: 1, cursor: 'pointer' }} onClick={() => toggleTask(task.id)}>
-              <div className="task-icon">
-                {task.done ? <CheckCircle2 size={40} color="var(--secondary)" /> : <Circle size={40} color="var(--primary)" />}
-              </div>
-              <div className="task-content">
-                <div className="task-title" style={{ fontSize: '1.2rem', fontWeight: task.done ? 'normal' : 'bold' }}>{task.title}</div>
-                <div className="task-time" style={{ color: 'var(--text-muted)' }}>Às {task.time}</div>
-              </div>
-            </div>
-            
-            {role === 'admin' && (
-              <button 
-                className="btn" 
-                style={{ padding: '8px', color: 'var(--danger)', background: 'transparent', marginLeft: '12px' }}
-                onClick={() => deleteTask(task.id)}
-              >
-                Remover
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
+
+      <Modal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title="Nova tarefa"
+        description="Tarefas aparecem na rotina de todos os cuidadores."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setFormOpen(false)}>Cancelar</Button>
+            <Button variant="primary" onClick={addTask} loading={saving}>Cadastrar</Button>
+          </>
+        }
+      >
+        <form onSubmit={addTask} className="u-stack u-gap-4">
+          <TextField
+            label="Descrição" required autoFocus
+            placeholder="Ex.: Conferir a medicação da manhã"
+            value={draft.title}
+            onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+          />
+          <TextField
+            label="Horário previsto" type="time" required
+            value={draft.time}
+            onChange={(e) => setDraft((d) => ({ ...d, time: e.target.value }))}
+          />
+        </form>
+      </Modal>
     </div>
   );
 }

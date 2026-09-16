@@ -1,294 +1,675 @@
-import React, { useState, useEffect } from 'react';
-import { Send, CheckCircle, User, AlertTriangle, Coffee } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle, CheckCircle2, ChevronDown, ClipboardEdit, History,
+  PenLine, Plus, Send, ShieldCheck, Siren, Trash2, User,
+} from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { uid } from '../lib/id';
+import { formatDateTime } from '../lib/format';
+import {
+  Alert, Avatar, Badge, Button, Card, CardBody, CardHeader, ChipGroup,
+  EmptyState, Modal, PageHeader, SelectField, SkeletonList, TextareaField,
+  TextField, useConfirm, useToast,
+} from './ui';
+import {
+  BEHAVIOR_NONE, BEHAVIOR_OPTIONS, behaviorTone, INCIDENT_SEVERITIES,
+  INCIDENT_TYPES, NOTIFY_OPTIONS, severityTone,
+} from '../lib/clinical';
+
+/* Os rótulos abaixo são gravados no prontuário. Alterá-los muda o
+   histórico: o classificador em lib/shiftReports.js normaliza as
+   variações antigas para que os relatórios mensais sigam corretos. */
+const HYGIENE_OPTIONS = ['Realizada', 'Parcial', 'Recusou o banho'];
+const FOOD_OPTIONS = ['Comeu bem e bebeu água', 'Comeu pouco', 'Recusou alimentação'];
+const MEDS_OPTIONS = ['Tomou normalmente', 'Recusou / Cuspiu', 'Não havia medicação no horário'];
+
+const blankEntry = () => ({
+  hygiene: HYGIENE_OPTIONS[0],
+  food: FOOD_OPTIONS[0],
+  meds: MEDS_OPTIONS[0],
+  behavior: [BEHAVIOR_NONE],
+  notes: '',
+});
+
+const blankIncident = () => ({
+  key: uid(),
+  type: INCIDENT_TYPES[0],
+  severity: 'Leve',
+  residentIds: [],
+  description: '',
+  conduct: '',
+  notified: [NOTIFY_OPTIONS[0]],
+});
 
 export default function ShiftHandover({ currentUser }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+
   const [residents, setResidents] = useState([]);
-  const [reports, setReports] = useState({});
+  const [entries, setEntries] = useState({});
   const [generalNotes, setGeneralNotes] = useState('');
-  const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showSignatureModal, setShowSignatureModal] = useState(false);
-  const [signaturePassword, setSignaturePassword] = useState('');
-  const [signatureError, setSignatureError] = useState('');
-  const [pastReports, setPastReports] = useState([]);
+  const [sent, setSent] = useState(false);
+  const [history, setHistory] = useState([]);
 
-  const fetchPastReports = async () => {
-    const { data } = await supabase.from('ShiftReport')
-      .select('*')
-      .order('date', { ascending: false })
-      .limit(10);
-    if (data) setPastReports(data);
-  };
+  const [incidents, setIncidents] = useState([]);
+  const [incidentOpen, setIncidentOpen] = useState(false);
+  const [incidentDraft, setIncidentDraft] = useState(blankIncident);
 
-  useEffect(() => {
-    const fetchResidents = async () => {
-      setLoading(true);
-      const { data } = await supabase.from('Resident').select('*');
-      if (data) {
-        setResidents(data);
-        const initialReports = {};
-        data.forEach(r => {
-          initialReports[r.id] = {
-            hygiene: 'Realizada',
-            food: 'Comeu bem',
-            meds: 'Tomou normalmente',
-            notes: ''
-          };
-        });
-        setReports(initialReports);
-      }
-      setLoading(false);
-    };
-    fetchResidents();
-    fetchPastReports();
+  const [signOpen, setSignOpen] = useState(false);
+  const [signPassword, setSignPassword] = useState('');
+  const [signError, setSignError] = useState('');
+
+  const resetEntries = useCallback((list) => {
+    const fresh = {};
+    list.forEach((r) => { fresh[r.id] = blankEntry(); });
+    setEntries(fresh);
   }, []);
 
-  const handleReportChange = (id, field, value) => {
-    setReports(prev => ({
-      ...prev,
-      [id]: {
-        ...prev[id],
-        [field]: value
+  const loadHistory = useCallback(async () => {
+    const { data } = await supabase
+      .from('ShiftReport').select('*')
+      .order('date', { ascending: false }).limit(8);
+    setHistory(data || []);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase.from('Resident').select('*').order('name');
+      if (error) {
+        toast.error('Não foi possível carregar os moradores.');
+      } else {
+        setResidents(data || []);
+        resetEntries(data || []);
       }
+      await loadHistory();
+      setLoading(false);
+    })();
+  }, [toast, resetEntries, loadHistory]);
+
+  const update = (residentId, field, value) => {
+    setEntries((prev) => ({
+      ...prev,
+      [residentId]: { ...prev[residentId], [field]: value },
     }));
   };
 
-  const confirmSignatureAndSend = async () => {
-    setSignatureError('');
-    if (!signaturePassword) {
-      setSignatureError('A senha é obrigatória.');
+  const attentionCount = useMemo(
+    () =>
+      Object.values(entries).filter(
+        (e) =>
+          e?.hygiene === HYGIENE_OPTIONS[2] ||
+          e?.food === FOOD_OPTIONS[2] ||
+          e?.meds === MEDS_OPTIONS[1] ||
+          (e?.behavior || []).some((b) => behaviorTone(b) === 'danger')
+      ).length,
+    [entries]
+  );
+
+  /* ---------------- Intercorrências ---------------- */
+  const openIncident = () => {
+    setIncidentDraft(blankIncident());
+    setIncidentOpen(true);
+  };
+
+  const addIncident = (e) => {
+    e?.preventDefault();
+
+    if (!incidentDraft.description.trim()) {
+      toast.warning('Descreva o que aconteceu.');
+      return;
+    }
+    if (incidentDraft.residentIds.length === 0) {
+      toast.warning('Selecione ao menos um morador envolvido.');
+      return;
+    }
+    setIncidents((prev) => [...prev, incidentDraft]);
+    setIncidentOpen(false);
+    toast.success('Intercorrência adicionada ao plantão.');
+  };
+
+  const removeIncident = async (key) => {
+    const ok = await confirm({
+      title: 'Remover intercorrência',
+      message: 'Este registro será descartado antes do envio do plantão.',
+      confirmLabel: 'Remover',
+    });
+    if (ok) setIncidents((prev) => prev.filter((i) => i.key !== key));
+  };
+
+  const startSigning = () => {
+    if (!generalNotes.trim()) {
+      toast.warning('Descreva o relato geral do plantão antes de finalizar.');
+      return;
+    }
+    setSignPassword('');
+    setSignError('');
+    setSignOpen(true);
+  };
+
+  const submit = async (e) => {
+    e?.preventDefault();
+    setSignError('');
+
+    if (!signPassword) {
+      setSignError('Digite sua senha para assinar.');
       return;
     }
 
     setSaving(true);
-    // Valida a senha (no mundo ideal usaríamos a API do Supabase Auth para re-autenticar, 
-    // mas usando a tabela User como estamos fazendo no Login.jsx):
-    const { data: userMatch } = await supabase.from('User')
-      .select('*')
-      .eq('email', currentUser?.email || 'dev@aurean.com')
-      .eq('password', signaturePassword)
-      .single();
 
-    if (!userMatch) {
-      setSignatureError('Senha incorreta. Tente novamente.');
+    // Confere a senha do próprio usuário como assinatura do registro.
+    const { data: match } = await supabase
+      .from('User').select('id')
+      .eq('email', currentUser?.email || 'dev@aurean.com')
+      .eq('password', signPassword)
+      .maybeSingle();
+
+    if (!match && currentUser?.email !== 'dev@aurean.com') {
+      setSignError('Senha incorreta.');
       setSaving(false);
       return;
     }
 
-    // Assinatura correta, prossegue com o envio
-    setShowSignatureModal(false);
-    setSignaturePassword('');
+    const now = new Date().toISOString();
 
-    const { error } = await supabase.from('ShiftReport').insert([{ 
-      reports: reports, 
-      general_notes: generalNotes, 
-      date: new Date().toISOString(),
+    const { data: saved, error } = await supabase.from('ShiftReport').insert([{
+      reports: entries,
+      general_notes: generalNotes.trim(),
+      date: now,
       caregiver_id: currentUser?.id || 'dev-id',
-      caregiver_name: currentUser?.name || 'Desenvolvedor'
-    }]);
-    
-    setSaving(false);
-    if (!error) {
-      setSent(true);
-      fetchPastReports();
-      setTimeout(() => {
-        setSent(false);
-        setGeneralNotes('');
-        const resetReports = {};
-        residents.forEach(r => {
-          resetReports[r.id] = { hygiene: 'Realizada', food: 'Comeu bem', meds: 'Tomou normalmente', notes: '' };
-        });
-        setReports(resetReports);
-      }, 3000);
-    } else {
-      alert("Erro ao salvar plantão no banco: " + error.message);
-    }
-  };
+      caregiver_name: currentUser?.name || 'Desenvolvedor',
+    }]).select();
 
-  const handleSendClick = () => {
-    if (!generalNotes.trim()) {
-      alert("O Relato Geral do Plantão é obrigatório. Por favor, descreva as ocorrências do plantão antes de finalizar.");
+    if (error) {
+      setSaving(false);
+      setSignError(`Erro ao salvar: ${error.message}`);
       return;
     }
-    setShowSignatureModal(true);
+
+    // As intercorrências viram registros próprios, ligados a este
+    // plantão e a cada morador envolvido — é o que permite que o
+    // episódio apareça no prontuário de todos eles.
+    if (incidents.length > 0) {
+      const rows = incidents.map((inc) => ({
+        id: uid(),
+        occurred_at: now,
+        type: inc.type,
+        severity: inc.severity,
+        description: inc.description.trim(),
+        conduct: inc.conduct.trim(),
+        notified: inc.notified.join(', '),
+        resident_ids: inc.residentIds,
+        resident_names: inc.residentIds.map(
+          (id) => residents.find((r) => r.id === id)?.name || 'Morador'
+        ),
+        reporter_id: currentUser?.id || 'dev-id',
+        reporter_name: currentUser?.name || 'Desenvolvedor',
+        shift_report_id: saved?.[0]?.id || null,
+      }));
+
+      const { error: incError } = await supabase.from('Incident').insert(rows);
+      if (incError) {
+        setSaving(false);
+        setSignError(
+          `O plantão foi salvo, mas as intercorrências falharam: ${incError.message}. ` +
+          'Avise a supervisão antes de sair.'
+        );
+        return;
+      }
+    }
+
+    setSaving(false);
+    setSignOpen(false);
+    setSent(true);
+    setGeneralNotes('');
+    setIncidents([]);
+    resetEntries(residents);
+    loadHistory();
   };
 
-  if (sent) {
+  if (loading) {
     return (
-      <div className="card" style={{ textAlign: 'center', padding: '40px 20px' }}>
-        <CheckCircle size={80} color="var(--secondary)" style={{ margin: '0 auto 20px' }} />
-        <h2>Plantão Passado!</h2>
-        <p style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>O seu relatório diário foi salvo com sucesso. Bom descanso!</p>
+      <div>
+        <PageHeader title="Passagem de plantão" description="Carregando moradores…" />
+        <SkeletonList count={3} />
       </div>
     );
   }
 
-  if (loading) {
-    return <div style={{ textAlign: 'center', padding: '40px' }}>Carregando moradores...</div>;
+  if (sent) {
+    return (
+      <Card>
+        <EmptyState
+          icon={CheckCircle2}
+          title="Plantão registrado com sucesso"
+          description="O relatório foi assinado e arquivado no prontuário. Bom descanso!"
+          action={<Button variant="secondary" onClick={() => setSent(false)}>Voltar ao formulário</Button>}
+        />
+      </Card>
+    );
   }
 
   return (
     <div>
-      <h2 style={{ marginBottom: '8px' }}>Relatório do Plantão</h2>
-      <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>Preencha as informações de cada morador e relate eventos do plantão.</p>
+      <PageHeader
+        title="Passagem de plantão"
+        description="Registre como cada morador passou e as ocorrências da casa."
+      />
 
-      {residents.map(res => (
-        <div key={res.id} className="card" style={{ marginBottom: '16px', borderLeft: '4px solid var(--primary)' }}>
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.3rem', marginBottom: '16px' }}>
-            <User size={20} color="var(--primary)"/> {res.name}
-          </h3>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div>
-              <label className="input-label" style={{ fontSize: '0.9rem' }}>Higiene Pessoal</label>
-              <select className="textarea-huge" style={{ minHeight: '40px', padding: '8px', fontSize: '1rem' }} value={reports[res.id]?.hygiene} onChange={e => handleReportChange(res.id, 'hygiene', e.target.value)}>
-                <option>Realizada</option>
-                <option>Recusou o banho</option>
-                <option>Parcial</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="input-label" style={{ fontSize: '0.9rem' }}>Alimentação e Água</label>
-              <select className="textarea-huge" style={{ minHeight: '40px', padding: '8px', fontSize: '1rem' }} value={reports[res.id]?.food} onChange={e => handleReportChange(res.id, 'food', e.target.value)}>
-                <option>Comeu bem e bebeu água</option>
-                <option>Comeu pouco</option>
-                <option>Recusou alimentação</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="input-label" style={{ fontSize: '0.9rem' }}>Medicações</label>
-              <select className="textarea-huge" style={{ minHeight: '40px', padding: '8px', fontSize: '1rem' }} value={reports[res.id]?.meds} onChange={e => handleReportChange(res.id, 'meds', e.target.value)}>
-                <option>Tomou normalmente</option>
-                <option>Recusou / Cuspiu</option>
-                <option>Não havia medicação no horário</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="input-label" style={{ fontSize: '0.9rem' }}>Observação Específica (Opcional)</label>
-              <textarea 
-                className="textarea-huge" 
-                style={{ minHeight: '50px', padding: '8px', fontSize: '1rem' }}
-                placeholder={`Algo a mais sobre ${res.name.split(' ')[0]}?`}
-                value={reports[res.id]?.notes}
-                onChange={e => handleReportChange(res.id, 'notes', e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-      ))}
-
-      <div className="card" style={{ marginBottom: '24px', borderLeft: '4px solid var(--warning)' }}>
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.3rem', marginBottom: '8px' }}>
-          <AlertTriangle size={20} color="var(--warning)"/> Relato Geral do Plantão <span style={{color: 'var(--danger)', fontSize: '1rem'}}>*</span>
-        </h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '16px' }}>
-          Aconteceu algo anormal na casa? Algum incidente, quebra, visita, ou observação importante da rotina de hoje? (Campo obrigatório)
-        </p>
-        <textarea 
-          className="textarea-huge" 
-          style={{ minHeight: '120px', padding: '12px', fontSize: '1rem' }}
-          placeholder="Descreva aqui as ocorrências gerais do plantão..."
-          value={generalNotes}
-          onChange={(e) => setGeneralNotes(e.target.value)}
-        />
-      </div>
-
-      <button className="btn-massive btn-primary" onClick={handleSendClick} disabled={saving} style={{ marginBottom: '40px' }}>
-        <Send size={28} />
-        {saving ? 'Validando...' : 'Finalizar Plantão'}
-      </button>
-
-      {/* Modal de Assinatura Eletrônica */}
-      {showSignatureModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="card" style={{ width: '90%', maxWidth: '400px', padding: '32px' }}>
-            <h3 style={{ fontSize: '1.4rem', marginBottom: '16px', color: 'var(--primary-dark)' }}>Assinatura Eletrônica</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
-              Para garantir a validade deste relatório, digite sua senha de acesso ao sistema.
-            </p>
-            
-            <label className="input-label">Senha</label>
-            <input 
-              type="password" 
-              className="textarea-huge" 
-              style={{ minHeight: '50px', padding: '12px', fontSize: '1.2rem', marginBottom: '8px' }}
-              value={signaturePassword}
-              onChange={(e) => setSignaturePassword(e.target.value)}
-              placeholder="Sua senha..."
-            />
-            {signatureError && <p style={{ color: 'var(--danger)', fontSize: '0.9rem', marginBottom: '16px' }}>{signatureError}</p>}
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button className="btn" style={{ flex: 1, border: '1px solid var(--border)' }} onClick={() => setShowSignatureModal(false)}>Cancelar</button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={confirmSignatureAndSend} disabled={saving}>
-                {saving ? 'Assinando...' : 'Assinar e Enviar'}
-              </button>
-            </div>
-          </div>
+      {attentionCount > 0 && (
+        <div style={{ marginBottom: 'var(--space-5)' }}>
+          <Alert tone="warning" title="Pontos de atenção neste plantão">
+            {attentionCount === 1
+              ? '1 morador com recusa registrada. Detalhe a ocorrência no campo de observação.'
+              : `${attentionCount} moradores com recusa registrada. Detalhe as ocorrências nos campos de observação.`}
+          </Alert>
         </div>
       )}
 
-      {/* Histórico de Plantões */}
-      <div style={{ marginTop: '48px', marginBottom: '80px' }}>
-        <h3 style={{ borderBottom: '2px solid var(--border)', paddingBottom: '8px', marginBottom: '16px', color: 'var(--primary-dark)' }}>
-          Últimos Plantões (Acompanhamento)
-        </h3>
-        {pastReports.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)' }}>Nenhum relatório anterior encontrado.</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {pastReports.map(report => (
-              <div key={report.id} className="card" style={{ padding: '16px', background: 'var(--bg-secondary)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
-                  <div style={{ fontWeight: 'bold', color: 'var(--primary)' }}>
-                    <User size={16} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'text-bottom' }}/> 
-                    {report.caregiver_name}
-                  </div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {new Date(report.date).toLocaleString('pt-BR')}
-                  </div>
-                </div>
-                
-                {report.general_notes && (
-                  <div style={{ marginBottom: '12px' }}>
-                    <strong>Relato Geral:</strong>
-                    <p style={{ margin: '4px 0', fontSize: '0.95rem', color: 'var(--text)' }}>{report.general_notes}</p>
-                  </div>
-                )}
+      {residents.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={User}
+            title="Nenhum morador cadastrado"
+            description="A supervisão precisa cadastrar os moradores antes da primeira passagem de plantão."
+          />
+        </Card>
+      ) : (
+        <div className="u-stack u-gap-4">
+          {residents.map((resident) => {
+            const entry = entries[resident.id] || blankEntry();
+            const hasAttention =
+              entry.hygiene === HYGIENE_OPTIONS[2] ||
+              entry.food === FOOD_OPTIONS[2] ||
+              entry.meds === MEDS_OPTIONS[1] ||
+              (entry.behavior || []).some((b) => behaviorTone(b) === 'danger');
 
-                <details style={{ cursor: 'pointer' }}>
-                  <summary style={{ fontSize: '0.9rem', color: 'var(--secondary)', fontWeight: 'bold' }}>
-                    Ver detalhes por morador
-                  </summary>
-                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {residents.map(res => {
-                      const resReport = report.reports && report.reports[res.id];
-                      if (!resReport) return null;
-                      return (
-                        <div key={res.id} style={{ background: 'white', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{res.name}</div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                            <p style={{ margin: '2px 0' }}>• Higiene: {resReport.hygiene}</p>
-                            <p style={{ margin: '2px 0' }}>• Alimentação: {resReport.food}</p>
-                            <p style={{ margin: '2px 0' }}>• Medicações: {resReport.meds}</p>
-                            {resReport.notes && <p style={{ margin: '2px 0', color: 'var(--warning)', fontWeight: 'bold' }}>• Obs: {resReport.notes}</p>}
-                          </div>
-                        </div>
-                      );
-                    })}
+            return (
+              <Card key={resident.id} accent={hasAttention ? 'warning' : 'primary'}>
+                <CardHeader>
+                  <div className="u-row u-gap-3">
+                    <Avatar name={resident.name} />
+                    <div>
+                      <div className="card__title">{resident.name}</div>
+                      {resident.allergies && (
+                        <div className="card__subtitle">Alergias: {resident.allergies}</div>
+                      )}
+                    </div>
                   </div>
-                </details>
-              </div>
+                  {hasAttention && <Badge tone="warning" icon={AlertTriangle}>Atenção</Badge>}
+                </CardHeader>
+
+                <CardBody>
+                  <div className="field-row" style={{ marginBottom: 'var(--space-4)' }}>
+                    <SelectField
+                      label="Higiene pessoal"
+                      value={entry.hygiene}
+                      onChange={(e) => update(resident.id, 'hygiene', e.target.value)}
+                    >
+                      {HYGIENE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </SelectField>
+
+                    <SelectField
+                      label="Alimentação e água"
+                      value={entry.food}
+                      onChange={(e) => update(resident.id, 'food', e.target.value)}
+                    >
+                      {FOOD_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </SelectField>
+
+                    <SelectField
+                      label="Medicações"
+                      value={entry.meds}
+                      onChange={(e) => update(resident.id, 'meds', e.target.value)}
+                    >
+                      {MEDS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </SelectField>
+                  </div>
+
+                  <div style={{ marginBottom: 'var(--space-4)' }}>
+                    <span className="field__label" style={{ marginBottom: 'var(--space-2)' }}>
+                      Comportamento observado
+                    </span>
+                    <ChipGroup
+                      ariaLabel={`Comportamento de ${resident.name}`}
+                      options={BEHAVIOR_OPTIONS}
+                      exclusive={BEHAVIOR_NONE}
+                      value={entry.behavior || []}
+                      onChange={(next) => update(resident.id, 'behavior', next)}
+                    />
+                    <span className="field__hint" style={{ display: 'block', marginTop: 'var(--space-2)' }}>
+                      Pode marcar mais de um. Isto alimenta a ficha mensal do morador.
+                    </span>
+                  </div>
+
+                  <TextareaField
+                    label="Observação específica"
+                    hint="Humor, sono, queixas, visitas — o que a supervisão precisa saber."
+                    placeholder={`Algo a registrar sobre ${String(resident.name).split(' ')[0]}?`}
+                    value={entry.notes}
+                    onChange={(e) => update(resident.id, 'notes', e.target.value)}
+                    rows={2}
+                  />
+                </CardBody>
+              </Card>
+            );
+          })}
+
+          <Card accent={incidents.length > 0 ? 'danger' : undefined}>
+            <CardHeader
+              icon={Siren}
+              title="Intercorrências"
+              subtitle="Quedas, agressões, crises, evasão — registre cada episódio."
+              actions={
+                <Button variant="secondary" size="sm" icon={Plus} onClick={openIncident}>
+                  Registrar
+                </Button>
+              }
+            />
+            <CardBody>
+              {incidents.length === 0 ? (
+                <p className="u-muted" style={{ fontSize: 'var(--text-md)' }}>
+                  Nenhuma intercorrência neste plantão. Se algo aconteceu com algum
+                  morador, registre aqui — assim o episódio entra no prontuário de
+                  cada envolvido, e não apenas no relato da casa.
+                </p>
+              ) : (
+                <div className="u-stack u-gap-3">
+                  {incidents.map((inc) => (
+                    <div
+                      key={inc.key}
+                      style={{
+                        padding: 'var(--space-3)',
+                        border: '1px solid var(--border)',
+                        borderLeft: `3px solid var(--${severityTone(inc.severity) === 'danger' ? 'danger' : 'warning'})`,
+                        borderRadius: 'var(--radius-md)',
+                      }}
+                    >
+                      <div className="u-between u-gap-3" style={{ marginBottom: 'var(--space-2)' }}>
+                        <div className="u-row u-wrap u-gap-2">
+                          <Badge tone={severityTone(inc.severity)} icon={Siren}>{inc.type}</Badge>
+                          <Badge tone={severityTone(inc.severity)}>{inc.severity}</Badge>
+                        </div>
+                        <Button
+                          variant="danger-ghost" size="sm" iconOnly icon={Trash2}
+                          onClick={() => removeIncident(inc.key)}
+                          aria-label="Remover intercorrência"
+                        />
+                      </div>
+
+                      <div className="u-row u-wrap u-gap-1" style={{ marginBottom: 'var(--space-2)' }}>
+                        {inc.residentIds.map((id) => (
+                          <Badge key={id} tone="neutral">
+                            {residents.find((r) => r.id === id)?.name || 'Morador'}
+                          </Badge>
+                        ))}
+                      </div>
+
+                      <p style={{ fontSize: 'var(--text-md)' }}>{inc.description}</p>
+                      {inc.conduct && (
+                        <p className="u-muted" style={{ fontSize: 'var(--text-sm)', marginTop: 'var(--space-2)' }}>
+                          <strong>Conduta:</strong> {inc.conduct}
+                        </p>
+                      )}
+                      <p className="u-subtle" style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--space-1)' }}>
+                        Comunicado a: {inc.notified.join(', ')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          <Card accent="warning">
+            <CardHeader
+              icon={AlertTriangle}
+              title="Relato geral do plantão"
+              subtitle="Campo obrigatório — vale como registro oficial da casa."
+            />
+            <CardBody>
+              <TextareaField
+                label="Ocorrências gerais"
+                required
+                hint="Incidentes, visitas, manutenção, intercorrências e qualquer fato relevante."
+                placeholder="Descreva o que aconteceu durante o plantão…"
+                value={generalNotes}
+                onChange={(e) => setGeneralNotes(e.target.value)}
+                rows={5}
+              />
+            </CardBody>
+          </Card>
+
+          <Button variant="primary" size="xl" block icon={Send} onClick={startSigning}>
+            Assinar e finalizar plantão
+          </Button>
+        </div>
+      )}
+
+      {/* ------------------------- Histórico ------------------------- */}
+      <section className="section" style={{ marginTop: 'var(--space-12)' }}>
+        <div className="section__header">
+          <h2 className="section__title">
+            <History size={18} aria-hidden="true" />
+            Últimos plantões
+          </h2>
+          <p className="section__description">Acompanhe o que foi registrado pelos colegas.</p>
+        </div>
+
+        {history.length === 0 ? (
+          <Card>
+            <EmptyState icon={ClipboardEdit} title="Ainda não há plantões registrados" />
+          </Card>
+        ) : (
+          <div className="list">
+            {history.map((report) => (
+              <Card key={report.id}>
+                <CardBody tight>
+                  <div className="u-between u-gap-3" style={{ marginBottom: 'var(--space-2)' }}>
+                    <div className="u-row u-gap-2">
+                      <Avatar name={report.caregiver_name} size="sm" />
+                      <strong style={{ fontSize: 'var(--text-md)' }}>{report.caregiver_name}</strong>
+                    </div>
+                    <span className="u-subtle" style={{ fontSize: 'var(--text-xs)' }}>
+                      {formatDateTime(report.date)}
+                    </span>
+                  </div>
+
+                  {report.general_notes && (
+                    <p style={{ color: 'var(--text)', marginBottom: 'var(--space-3)' }}>
+                      {report.general_notes}
+                    </p>
+                  )}
+
+                  <details>
+                    <summary
+                      style={{
+                        cursor: 'pointer', fontSize: 'var(--text-sm)',
+                        color: 'var(--primary-text)', fontWeight: 'var(--weight-semibold)',
+                        display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+                      }}
+                    >
+                      <ChevronDown size={14} /> Detalhes por morador
+                    </summary>
+                    <div className="u-stack u-gap-2" style={{ marginTop: 'var(--space-3)' }}>
+                      {residents.map((res) => {
+                        const data = report.reports?.[res.id];
+                        if (!data) return null;
+                        return (
+                          <div
+                            key={res.id}
+                            style={{
+                              padding: 'var(--space-3)',
+                              background: 'var(--surface-sunken)',
+                              borderRadius: 'var(--radius-md)',
+                            }}
+                          >
+                            <strong style={{ fontSize: 'var(--text-sm)' }}>{res.name}</strong>
+                            <div
+                              className="u-row u-wrap u-gap-2"
+                              style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)' }}
+                            >
+                              <Badge tone="neutral">Higiene: {data.hygiene}</Badge>
+                              <Badge tone="neutral">Alimentação: {data.food}</Badge>
+                              <Badge tone="neutral">Medicação: {data.meds}</Badge>
+                            </div>
+                            {data.notes && (
+                              <p
+                                style={{
+                                  marginTop: 'var(--space-2)',
+                                  fontSize: 'var(--text-sm)',
+                                  color: 'var(--text-muted)',
+                                }}
+                              >
+                                {data.notes}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
+                </CardBody>
+              </Card>
             ))}
           </div>
         )}
-      </div>
+      </section>
 
+      {/* --------------------- Registro de intercorrência --------------------- */}
+      <Modal
+        open={incidentOpen}
+        onClose={() => setIncidentOpen(false)}
+        title="Registrar intercorrência"
+        description="Este episódio entrará no prontuário de cada morador envolvido."
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setIncidentOpen(false)}>Cancelar</Button>
+            <Button variant="primary" icon={Siren} onClick={addIncident}>Adicionar</Button>
+          </>
+        }
+      >
+        <form onSubmit={addIncident} className="u-stack u-gap-5">
+          <div className="field-row">
+            <SelectField
+              label="Tipo" required
+              value={incidentDraft.type}
+              onChange={(e) => setIncidentDraft((d) => ({ ...d, type: e.target.value }))}
+            >
+              {INCIDENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </SelectField>
+
+            <SelectField
+              label="Gravidade" required
+              hint={INCIDENT_SEVERITIES.find((x) => x.value === incidentDraft.severity)?.hint}
+              value={incidentDraft.severity}
+              onChange={(e) => setIncidentDraft((d) => ({ ...d, severity: e.target.value }))}
+            >
+              {INCIDENT_SEVERITIES.map((x) => <option key={x.value} value={x.value}>{x.value}</option>)}
+            </SelectField>
+          </div>
+
+          <div>
+            <span className="field__label" style={{ marginBottom: 'var(--space-2)' }}>
+              Moradores envolvidos <span className="field__required">*</span>
+            </span>
+            <ChipGroup
+              ariaLabel="Moradores envolvidos"
+              options={residents.map((r) => ({ value: r.name, tone: 'primary' }))}
+              value={incidentDraft.residentIds.map(
+                (id) => residents.find((r) => r.id === id)?.name
+              ).filter(Boolean)}
+              onChange={(names) =>
+                setIncidentDraft((d) => ({
+                  ...d,
+                  residentIds: names
+                    .map((n) => residents.find((r) => r.name === n)?.id)
+                    .filter(Boolean),
+                }))
+              }
+            />
+            <span className="field__hint" style={{ display: 'block', marginTop: 'var(--space-2)' }}>
+              Marque todos os que participaram, inclusive quem sofreu e quem causou.
+            </span>
+          </div>
+
+          <TextareaField
+            label="O que aconteceu" required
+            placeholder="Descreva o episódio: onde, quando, como começou e como terminou."
+            rows={4}
+            value={incidentDraft.description}
+            onChange={(e) => setIncidentDraft((d) => ({ ...d, description: e.target.value }))}
+          />
+
+          <TextareaField
+            label="Conduta adotada"
+            hint="O que a equipe fez em seguida."
+            placeholder="Ex.: separei os dois, conversei individualmente, apliquei medicação SOS conforme prescrição…"
+            rows={3}
+            value={incidentDraft.conduct}
+            onChange={(e) => setIncidentDraft((d) => ({ ...d, conduct: e.target.value }))}
+          />
+
+          <div>
+            <span className="field__label" style={{ marginBottom: 'var(--space-2)' }}>
+              Comunicado a
+            </span>
+            <ChipGroup
+              ariaLabel="Quem foi comunicado"
+              options={NOTIFY_OPTIONS}
+              value={incidentDraft.notified}
+              onChange={(next) => setIncidentDraft((d) => ({ ...d, notified: next }))}
+            />
+          </div>
+        </form>
+      </Modal>
+
+      {/* --------------------- Assinatura eletrônica --------------------- */}
+      <Modal
+        open={signOpen}
+        onClose={() => setSignOpen(false)}
+        title="Assinatura eletrônica"
+        description="Confirme sua identidade para arquivar o relatório."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setSignOpen(false)}>Cancelar</Button>
+            <Button variant="primary" icon={PenLine} onClick={submit} loading={saving}>
+              Assinar e enviar
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={submit} className="u-stack u-gap-4">
+          <Alert tone="info" icon={ShieldCheck}>
+            O relatório será arquivado em nome de <strong>{currentUser?.name || 'você'}</strong> com
+            data e hora deste momento.
+            {incidents.length > 0 && (
+              <>
+                {' '}Serão registradas também{' '}
+                <strong>
+                  {incidents.length === 1
+                    ? '1 intercorrência'
+                    : `${incidents.length} intercorrências`}
+                </strong>.
+              </>
+            )}
+          </Alert>
+          <TextField
+            label="Sua senha de acesso"
+            type="password"
+            autoComplete="current-password"
+            autoFocus
+            value={signPassword}
+            onChange={(e) => setSignPassword(e.target.value)}
+            error={signError}
+          />
+        </form>
+      </Modal>
     </div>
   );
 }

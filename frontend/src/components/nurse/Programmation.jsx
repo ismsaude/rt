@@ -1,193 +1,296 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar as CalendarIcon, Clock, MapPin, User, Plus, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Calendar as CalendarIcon, Clock, MapPin, Plus, Trash2, User,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { uid } from '../../lib/id';
+import { EVENT_TYPES, SOCIAL_EVENT_TYPES } from '../../lib/clinical';
+import { formatDate, formatWeekday, toISODate, toDate } from '../../lib/format';
+import {
+  Badge, Button, Card, CardBody, EmptyState, Modal, PageHeader,
+  SelectField, SkeletonList, TextareaField, TextField, useConfirm, useToast,
+} from '../ui';
+
+const EMPTY = { title: '', type: EVENT_TYPES[0], residentId: '', date: '', time: '', location: '', notes: '' };
 
 export default function Programmation({ role }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+
   const [events, setEvents] = useState([]);
   const [residents, setResidents] = useState([]);
-  const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(EMPTY);
 
-  // Form states
-  const [title, setTitle] = useState('');
-  const [residentId, setResidentId] = useState('');
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
-  const [location, setLocation] = useState('');
-  const [notes, setNotes] = useState('');
+  const canEdit = role === 'admin' || role === 'enfermeiro';
 
-  useEffect(() => {
-    fetchEvents();
-    fetchResidents();
-  }, []);
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [{ data, error }, { data: res }] = await Promise.all([
+      supabase.from('Event').select('*').order('date', { ascending: true }),
+      supabase.from('Resident').select('id, name').order('name'),
+    ]);
 
-  const fetchEvents = async () => {
-    const { data } = await supabase.from('Event').select('*').order('date', { ascending: true });
-    if (data && data.length > 0) {
-      setEvents(data);
-    } else {
-      const localEvents = JSON.parse(localStorage.getItem('rt_events') || '[]');
-      // sort local events
-      localEvents.sort((a, b) => new Date(`${a.date}T${a.time}`) - new Date(`${b.date}T${b.time}`));
-      setEvents(localEvents);
-    }
-  };
+    if (error) toast.error('Não foi possível carregar a agenda.');
+    setEvents(data || []);
+    setResidents(res || []);
+    setLoading(false);
+  }, [toast]);
 
-  const fetchResidents = async () => {
-    const { data } = await supabase.from('Resident').select('id, name');
-    if (data) setResidents(data);
-  };
+  useEffect(() => { load(); }, [load]);
 
-  const handleSave = async () => {
-    if (!title || !date || !time) {
-      alert("Preencha pelo menos o título, a data e a hora.");
+  const { upcoming, past } = useMemo(() => {
+    const today = toISODate(new Date());
+    const sorted = [...events].sort((a, b) =>
+      `${a.date}T${a.time || '00:00'}`.localeCompare(`${b.date}T${b.time || '00:00'}`)
+    );
+    return {
+      upcoming: sorted.filter((e) => String(e.date) >= today),
+      past: sorted.filter((e) => String(e.date) < today).reverse(),
+    };
+  }, [events]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.title.trim() || !form.date || !form.time) {
+      toast.warning('Informe título, data e hora.');
       return;
     }
 
-    const selectedResident = residents.find(r => r.id === residentId);
+    setSaving(true);
+    const resident = residents.find((r) => r.id === form.residentId);
 
-    const newEvent = {
-      id: Date.now().toString(),
-      title,
-      resident_id: residentId,
-      resident_name: selectedResident ? selectedResident.name : 'Geral (Todos)',
-      date,
-      time,
-      location,
-      notes,
-    };
-
-    const { data, error } = await supabase.from('Event').insert([newEvent]).select();
+    const { error } = await supabase.from('Event').insert([{
+      id: uid(),
+      title: form.title.trim(),
+      type: form.type,
+      resident_id: form.residentId || null,
+      resident_name: resident?.name || 'Geral (todos)',
+      date: form.date,
+      time: form.time,
+      location: form.location.trim(),
+      notes: form.notes.trim(),
+    }]);
+    setSaving(false);
 
     if (error) {
-      const updated = [...events, newEvent].sort((a, b) => new Date(`${a.date}T${a.time}`) - new Date(`${b.date}T${b.time}`));
-      setEvents(updated);
-      localStorage.setItem('rt_events', JSON.stringify(updated));
-    } else if (data) {
-      fetchEvents();
+      toast.error(`Erro ao agendar: ${error.message}`);
+      return;
     }
-
-    setShowModal(false);
-    setTitle(''); setResidentId(''); setDate(''); setTime(''); setLocation(''); setNotes('');
+    setForm(EMPTY);
+    setFormOpen(false);
+    toast.success('Compromisso agendado.');
+    load();
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Deseja realmente excluir este compromisso?")) return;
+  const remove = async (event) => {
+    const ok = await confirm({
+      title: 'Excluir compromisso',
+      message: `"${event.title}" de ${formatDate(event.date)} será removido da agenda.`,
+      confirmLabel: 'Excluir',
+    });
+    if (!ok) return;
 
-    const { error } = await supabase.from('Event').delete().eq('id', id);
+    const { error } = await supabase.from('Event').delete().eq('id', event.id);
     if (error) {
-      const updated = events.filter(e => e.id !== id);
-      setEvents(updated);
-      localStorage.setItem('rt_events', JSON.stringify(updated));
-    } else {
-      fetchEvents();
+      toast.error('Erro ao excluir o compromisso.');
+      return;
     }
+    setEvents((prev) => prev.filter((e) => e.id !== event.id));
+    toast.success('Compromisso excluído.');
+  };
+
+  const renderEvent = (event, isPast = false) => {
+    const eventDate = toDate(event.date);
+    const isToday = toISODate(eventDate) === toISODate(new Date());
+
+    return (
+      <Card key={event.id} accent={isPast ? undefined : isToday ? 'warning' : 'primary'}>
+        <CardBody tight>
+          <div className="u-between u-gap-3">
+            <div style={{ minWidth: 0, flex: 1, opacity: isPast ? 0.65 : 1 }}>
+              <div className="u-row u-wrap u-gap-2" style={{ marginBottom: 'var(--space-2)' }}>
+                <Badge tone={isToday ? 'warning' : 'primary'} icon={CalendarIcon}>
+                  {formatDate(event.date)} · {formatWeekday(event.date, true)}
+                </Badge>
+                <Badge tone="neutral" icon={Clock}>{event.time}</Badge>
+                {event.type && (
+                  <Badge tone={SOCIAL_EVENT_TYPES.includes(event.type) ? 'success' : 'info'}>
+                    {event.type}
+                  </Badge>
+                )}
+                {isToday && <Badge tone="warning">Hoje</Badge>}
+              </div>
+
+              <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>
+                {event.title}
+              </h3>
+
+              <div
+                className="u-row u-wrap u-gap-4 u-muted"
+                style={{ fontSize: 'var(--text-sm)' }}
+              >
+                <span className="u-row u-gap-1">
+                  <User size={13} aria-hidden="true" /> {event.resident_name}
+                </span>
+                {event.location && (
+                  <span className="u-row u-gap-1">
+                    <MapPin size={13} aria-hidden="true" /> {event.location}
+                  </span>
+                )}
+              </div>
+
+              {event.notes && (
+                <p
+                  style={{
+                    marginTop: 'var(--space-3)',
+                    paddingTop: 'var(--space-3)',
+                    borderTop: '1px solid var(--border-subtle)',
+                    fontSize: 'var(--text-sm)',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  {event.notes}
+                </p>
+              )}
+            </div>
+
+            {canEdit && (
+              <Button
+                variant="danger-ghost" size="sm" iconOnly icon={Trash2}
+                onClick={() => remove(event)}
+                aria-label={`Excluir ${event.title}`}
+              />
+            )}
+          </div>
+        </CardBody>
+      </Card>
+    );
   };
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h2 style={{ marginBottom: '4px' }}>Agenda / Programação</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Consultas e eventos dos moradores.
-          </p>
-        </div>
-        {(role === 'admin' || role === 'enfermeiro') && (
-          <button className="btn btn-primary" style={{ padding: '8px 16px' }} onClick={() => setShowModal(true)}>
-            <Plus size={18} />
-            Novo Evento
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Agenda"
+        description="Consultas, exames e compromissos dos moradores."
+        actions={
+          canEdit && (
+            <Button variant="primary" icon={Plus} onClick={() => setFormOpen(true)}>
+              Novo compromisso
+            </Button>
+          )
+        }
+      />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '80px' }}>
-        {events.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)' }}>Nenhum compromisso agendado.</p>
-        ) : (
-          events.map(ev => {
-            const evDateObj = new Date(`${ev.date}T00:00:00`);
-            const evDate = evDateObj.toLocaleDateString('pt-BR');
-            let evDayOfWeek = evDateObj.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
-            evDayOfWeek = evDayOfWeek.charAt(0).toUpperCase() + evDayOfWeek.slice(1);
+      {loading ? (
+        <SkeletonList count={3} />
+      ) : events.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={CalendarIcon}
+            title="Nenhum compromisso agendado"
+            description="Consultas, exames e saídas aparecem aqui para toda a equipe."
+            action={
+              canEdit && (
+                <Button variant="primary" icon={Plus} onClick={() => setFormOpen(true)}>
+                  Agendar compromisso
+                </Button>
+              )
+            }
+          />
+        </Card>
+      ) : (
+        <div className="u-stack u-gap-8">
+          <section>
+            <p className="divider-label" style={{ marginBottom: 'var(--space-3)' }}>
+              Próximos ({upcoming.length})
+            </p>
+            {upcoming.length === 0 ? (
+              <Card><EmptyState icon={CalendarIcon} title="Nenhum compromisso futuro" /></Card>
+            ) : (
+              <div className="list">{upcoming.map((e) => renderEvent(e))}</div>
+            )}
+          </section>
 
-            return (
-              <div key={ev.id} className="card" style={{ borderLeft: '4px solid var(--primary)', padding: '12px 16px', marginBottom: '0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.2rem', marginBottom: '6px', color: 'var(--text-main)' }}>{ev.title}</h3>
-                    <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-                      <User size={14} /> {ev.resident_name}
-                    </p>
-                    <p style={{ fontSize: '0.95rem', color: 'var(--primary-dark)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-                      <CalendarIcon size={14} /> {evDate} ({evDayOfWeek}) <Clock size={14} style={{ marginLeft: '8px' }} /> {ev.time}
-                    </p>
-                    {ev.location && (
-                      <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px' }}>
-                        <MapPin size={14} /> {ev.location}
-                      </p>
-                    )}
-                    {ev.notes && (
-                      <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border)', fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                        <strong>Obs:</strong> {ev.notes}
-                      </div>
-                    )}
-                  </div>
-
-                  {(role === 'admin' || role === 'enfermeiro') && (
-                    <button 
-                      className="btn" 
-                      style={{ background: 'transparent', color: 'var(--danger)', padding: '6px', border: '1px solid var(--border)' }}
-                      onClick={() => handleDelete(ev.id)}
-                      title="Excluir"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {showModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, overflowY: 'auto' }}>
-          <div className="card" style={{ width: '90%', maxWidth: '500px', padding: '32px', margin: '40px 0' }}>
-            <h3 style={{ fontSize: '1.4rem', marginBottom: '20px', color: 'var(--primary-dark)' }}>Agendar Novo Evento</h3>
-            
-            <label className="input-label">Título (Ex: Consulta Dr. João) *</label>
-            <input type="text" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', width: '100%', boxSizing: 'border-box', marginBottom: '16px' }} value={title} onChange={e => setTitle(e.target.value)} />
-
-            <label className="input-label">Morador Relacionado</label>
-            <select className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', width: '100%', boxSizing: 'border-box', marginBottom: '16px' }} value={residentId} onChange={e => setResidentId(e.target.value)}>
-              <option value="">Geral (Todos ou Nenhum específico)</option>
-              {residents.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-              <div>
-                <label className="input-label">Data *</label>
-                <input type="date" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={date} onChange={e => setDate(e.target.value)} />
-              </div>
-              <div>
-                <label className="input-label">Hora *</label>
-                <input type="time" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={time} onChange={e => setTime(e.target.value)} />
-              </div>
-            </div>
-
-            <label className="input-label">Local (Opcional)</label>
-            <input type="text" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', width: '100%', boxSizing: 'border-box', marginBottom: '16px' }} placeholder="Ex: Hospital Unimed" value={location} onChange={e => setLocation(e.target.value)} />
-
-            <label className="input-label">Observações (Opcional)</label>
-            <textarea className="textarea-huge" style={{ minHeight: '80px', padding: '12px', fontSize: '1rem', width: '100%', boxSizing: 'border-box', marginBottom: '24px' }} placeholder="Ex: Precisa estar em jejum..." value={notes} onChange={e => setNotes(e.target.value)} />
-
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button className="btn" style={{ flex: 1, border: '1px solid var(--border)' }} onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSave}>Agendar</button>
-            </div>
-          </div>
+          {past.length > 0 && (
+            <section>
+              <p className="divider-label" style={{ marginBottom: 'var(--space-3)' }}>
+                Já realizados ({past.length})
+              </p>
+              <div className="list">{past.slice(0, 10).map((e) => renderEvent(e, true))}</div>
+            </section>
+          )}
         </div>
       )}
+
+      <Modal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title="Novo compromisso"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setFormOpen(false)}>Cancelar</Button>
+            <Button variant="primary" onClick={submit} loading={saving}>Agendar</Button>
+          </>
+        }
+      >
+        <form onSubmit={submit} className="u-stack u-gap-4">
+          <TextField
+            label="Título" required autoFocus
+            placeholder="Ex.: Consulta com Dr. João — psiquiatria"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+          />
+
+          <SelectField
+            label="Tipo de compromisso" required
+            hint="Define em qual seção da ficha mensal o compromisso aparece."
+            value={form.type}
+            onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+          >
+            {EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </SelectField>
+
+          <SelectField
+            label="Morador"
+            value={form.residentId}
+            onChange={(e) => setForm((f) => ({ ...f, residentId: e.target.value }))}
+          >
+            <option value="">Geral (toda a casa)</option>
+            {residents.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </SelectField>
+
+          <div className="field-row">
+            <TextField
+              label="Data" type="date" required
+              value={form.date}
+              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+            />
+            <TextField
+              label="Hora" type="time" required
+              value={form.time}
+              onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
+            />
+          </div>
+
+          <TextField
+            label="Local"
+            placeholder="Ex.: UBS Central — sala 3"
+            value={form.location}
+            onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+          />
+
+          <TextareaField
+            label="Observações"
+            placeholder="Ex.: comparecer em jejum, levar cartão SUS…"
+            rows={3}
+            value={form.notes}
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+          />
+        </form>
+      </Modal>
     </div>
   );
 }

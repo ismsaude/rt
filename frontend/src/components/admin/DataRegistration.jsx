@@ -1,357 +1,458 @@
-import React, { useState, useEffect } from 'react';
-import { Apple, Users, Save, CheckCircle2, Trash2, Edit2, PlusCircle } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Apple, Cake, Pencil, Plus, Save, Trash2, TriangleAlert, Users,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { uid } from '../../lib/id';
+import { calcAge, formatDate } from '../../lib/format';
+import { AUTONOMY_LEVELS } from '../../lib/clinical';
+import {
+  Avatar, Badge, Button, Card, EmptyState, Modal, PageHeader, SelectField,
+  SkeletonList, Table, Tabs, TextField, useConfirm, useToast,
+} from '../ui';
 
-const formatDate = (isoString) => {
-  if (!isoString) return '';
-  return isoString.split('T')[0].split('-').reverse().join('/');
+const FOOD_CATEGORIES = ['Básico', 'Limpeza', 'Higiene', 'Verduras', 'Proteínas', 'Moradores'];
+const FOOD_UNITS = ['unidades', 'kg', 'litros', 'pacotes'];
+
+const EMPTY_RESIDENT = {
+  name: '', cpf: '', dateOfBirth: '', sex: '', allergies: '',
+  autonomy_hygiene: '', autonomy_food: '', autonomy_activities: '',
 };
+const EMPTY_FOOD = { name: '', category: 'Básico', unit: 'unidades', quantity: '', minQuantity: '' };
 
 export default function DataRegistration() {
-  const [activeTab, setActiveTab] = useState('moradores');
-  
-  // Data lists
+  const toast = useToast();
+  const confirm = useConfirm();
+
+  const [tab, setTab] = useState('moradores');
   const [residents, setResidents] = useState([]);
   const [foods, setFoods] = useState([]);
-  
-  // Loaders
-  const [loadingList, setLoadingList] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState(false);
-  
-  // Edit States
+  const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [resident, setResident] = useState(EMPTY_RESIDENT);
+  const [food, setFood] = useState(EMPTY_FOOD);
 
-  // Forms
-  const [showForm, setShowForm] = useState(false);
-  const [resident, setResident] = useState({ name: '', cpf: '', dateOfBirth: '', allergies: '' });
-  const [food, setFood] = useState({ name: '', category: 'Básico', unit: 'unidades', quantity: '', minQuantity: '' });
+  const isResidents = tab === 'moradores';
 
-  const fetchData = async () => {
-    setLoadingList(true);
-    if (activeTab === 'moradores') {
-      const { data } = await supabase.from('Resident').select('*').order('name');
+  const load = useCallback(async () => {
+    setLoading(true);
+    if (tab === 'moradores') {
+      const { data, error } = await supabase.from('Resident').select('*').order('name');
+      if (error) toast.error('Não foi possível carregar os moradores.');
       setResidents(data || []);
-    } else if (activeTab === 'despensa') {
-      const { data } = await supabase.from('FoodItem').select('*').order('name');
+    } else {
+      const { data, error } = await supabase.from('FoodItem').select('*').order('name');
+      if (error) toast.error('Não foi possível carregar a despensa.');
       setFoods(data || []);
     }
-    setLoadingList(false);
-  };
+    setLoading(false);
+  }, [tab, toast]);
 
-  useEffect(() => {
-    fetchData();
-    cancelEdit();
-  }, [activeTab]);
+  useEffect(() => { load(); }, [load]);
 
-  const handleSuccess = () => {
-    setSuccess(true);
-    setTimeout(() => setSuccess(false), 3000);
-  };
-
-  const cancelEdit = () => {
+  const closeForm = () => {
+    setFormOpen(false);
     setEditingId(null);
-    setShowForm(false);
-    if (activeTab === 'moradores') setResident({ name: '', cpf: '', dateOfBirth: '', allergies: '' });
-    else if (activeTab === 'despensa') setFood({ name: '', category: 'Básico', unit: 'unidades', quantity: '', minQuantity: '' });
+    setResident(EMPTY_RESIDENT);
+    setFood(EMPTY_FOOD);
   };
 
-  // ----- CRUD MORADORES -----
+  const openCreate = () => {
+    setEditingId(null);
+    setResident(EMPTY_RESIDENT);
+    setFood(EMPTY_FOOD);
+    setFormOpen(true);
+  };
+
+  const openEditResident = (r) => {
+    setResident({
+      name: r.name || '',
+      cpf: r.cpf || '',
+      dateOfBirth: r.dateOfBirth ? String(r.dateOfBirth).split('T')[0] : '',
+      sex: r.sex || '',
+      allergies: r.allergies || '',
+      autonomy_hygiene: r.autonomy_hygiene || '',
+      autonomy_food: r.autonomy_food || '',
+      autonomy_activities: r.autonomy_activities || '',
+    });
+    setEditingId(r.id);
+    setFormOpen(true);
+  };
+
+  const openEditFood = (f) => {
+    setFood({
+      name: f.name || '',
+      category: f.category || 'Básico',
+      unit: f.unit || 'unidades',
+      quantity: f.quantity ?? '',
+      minQuantity: f.minQuantity ?? '',
+    });
+    setEditingId(f.id);
+    setFormOpen(true);
+  };
+
   const saveResident = async (e) => {
     e.preventDefault();
+    if (!resident.name.trim()) return;
+
     setSaving(true);
-    
-    let formattedDate = resident.dateOfBirth;
-    if (formattedDate && !formattedDate.includes('T')) {
-      formattedDate = new Date(formattedDate).toISOString();
-    }
+    const payload = {
+      ...resident,
+      name: resident.name.trim(),
+      dateOfBirth: resident.dateOfBirth
+        ? new Date(`${resident.dateOfBirth}T12:00:00`).toISOString()
+        : null,
+      updatedAt: new Date().toISOString(),
+    };
 
-    if (editingId) {
-      const { error } = await supabase.from('Resident').update({ ...resident, dateOfBirth: formattedDate, updatedAt: new Date().toISOString() }).eq('id', editingId);
-      if (!error) { handleSuccess(); cancelEdit(); fetchData(); } else alert(error.message);
-    } else {
-      const { error } = await supabase.from('Resident').insert([{ id: crypto.randomUUID(), ...resident, dateOfBirth: formattedDate, updatedAt: new Date().toISOString() }]);
-      if (!error) { handleSuccess(); cancelEdit(); fetchData(); } else alert(error.message);
-    }
+    const { error } = editingId
+      ? await supabase.from('Resident').update(payload).eq('id', editingId)
+      : await supabase.from('Resident').insert([{ id: uid(), ...payload }]);
     setSaving(false);
-  };
 
-  const editResident = (r) => {
-    setEditingId(r.id);
-    setResident({
-      name: r.name,
-      cpf: r.cpf || '',
-      dateOfBirth: r.dateOfBirth ? r.dateOfBirth.split('T')[0] : '',
-      allergies: r.allergies || ''
-    });
-  };
-
-  const deleteResident = async (id) => {
-    if (window.confirm('Tem certeza que deseja excluir este morador?')) {
-      await supabase.from('Resident').delete().eq('id', id);
-      fetchData();
+    if (error) {
+      toast.error(`Erro ao salvar: ${error.message}`);
+      return;
     }
+    toast.success(editingId ? 'Morador atualizado.' : 'Morador cadastrado.');
+    closeForm();
+    load();
   };
 
-  // ----- CRUD DESPENSA -----
   const saveFood = async (e) => {
     e.preventDefault();
+    if (!food.name.trim()) return;
+
     setSaving(true);
-    if (editingId) {
-      const { error } = await supabase.from('FoodItem').update({ ...food, quantity: parseFloat(food.quantity), minQuantity: parseFloat(food.minQuantity), updatedAt: new Date().toISOString() }).eq('id', editingId);
-      if (!error) { handleSuccess(); cancelEdit(); fetchData(); } else alert(error.message);
-    } else {
-      const { error } = await supabase.from('FoodItem').insert([{ id: crypto.randomUUID(), ...food, quantity: parseFloat(food.quantity), minQuantity: parseFloat(food.minQuantity), updatedAt: new Date().toISOString() }]);
-      if (!error) { handleSuccess(); cancelEdit(); fetchData(); } else alert(error.message);
-    }
+    const payload = {
+      ...food,
+      name: food.name.trim(),
+      quantity: parseFloat(food.quantity) || 0,
+      minQuantity: parseFloat(food.minQuantity) || 0,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const { error } = editingId
+      ? await supabase.from('FoodItem').update(payload).eq('id', editingId)
+      : await supabase.from('FoodItem').insert([{ id: uid(), ...payload }]);
     setSaving(false);
-  };
 
-  const editFood = (f) => {
-    setEditingId(f.id);
-    setFood({ name: f.name, category: f.category, unit: f.unit, quantity: f.quantity, minQuantity: f.minQuantity });
-  };
-
-  const deleteFood = async (id) => {
-    if (window.confirm('Tem certeza que deseja excluir este item da despensa?')) {
-      await supabase.from('FoodItem').delete().eq('id', id);
-      fetchData();
+    if (error) {
+      toast.error(`Erro ao salvar: ${error.message}`);
+      return;
     }
+    toast.success(editingId ? 'Item atualizado.' : 'Item cadastrado.');
+    closeForm();
+    load();
+  };
+
+  const removeResident = async (r) => {
+    const ok = await confirm({
+      title: 'Excluir morador',
+      message: `${r.name} será removido do cadastro.`,
+      warning:
+        'Plantões, sinais vitais e relatórios já lançados continuam no banco, mas deixarão de exibir o nome corretamente. Prefira desativar o morador quando essa opção existir.',
+      confirmLabel: 'Excluir mesmo assim',
+    });
+    if (!ok) return;
+
+    const { error } = await supabase.from('Resident').delete().eq('id', r.id);
+    if (error) {
+      toast.error('Erro ao excluir o morador.');
+      return;
+    }
+    toast.success('Morador excluído.');
+    load();
+  };
+
+  const removeFood = async (f) => {
+    const ok = await confirm({
+      title: 'Excluir item',
+      message: `"${f.name}" será removido da despensa.`,
+      confirmLabel: 'Excluir',
+    });
+    if (!ok) return;
+
+    const { error } = await supabase.from('FoodItem').delete().eq('id', f.id);
+    if (error) {
+      toast.error('Erro ao excluir o item.');
+      return;
+    }
+    toast.success('Item excluído.');
+    load();
   };
 
   return (
     <div>
-      <div style={{ marginBottom: '24px' }}>
-        <h2 style={{ marginBottom: '4px' }}>Central de Cadastros e Gestão</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Gerencie moradores e itens de despensa.</p>
+      <PageHeader
+        title="Central de cadastros"
+        description="Moradores da residência e itens de despensa."
+        actions={
+          <Button variant="primary" icon={Plus} onClick={openCreate}>
+            {isResidents ? 'Novo morador' : 'Novo item'}
+          </Button>
+        }
+      />
+
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <Tabs
+          ariaLabel="Tipo de cadastro"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'moradores', label: 'Moradores', icon: Users, count: residents.length || undefined },
+            { value: 'despensa', label: 'Despensa', icon: Apple, count: foods.length || undefined },
+          ]}
+        />
       </div>
 
-      {/* Tabs de Seleção */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '32px', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button className={`btn ${activeTab === 'moradores' ? 'btn-primary' : ''}`} style={{ background: activeTab !== 'moradores' ? 'white' : '', border: '1px solid var(--border)' }} onClick={() => setActiveTab('moradores')}>
-            <Users size={20}/> Moradores
-          </button>
-          <button className={`btn ${activeTab === 'despensa' ? 'btn-primary' : ''}`} style={{ background: activeTab !== 'despensa' ? 'white' : '', border: '1px solid var(--border)' }} onClick={() => setActiveTab('despensa')}>
-            <Apple size={20}/> Despensa
-          </button>
-        </div>
-        
-        {!showForm && !editingId && (
-          <button className="btn" style={{ border: '1px solid var(--border)', background: 'white' }} onClick={() => setShowForm(true)}>
-            <PlusCircle size={18} /> 
-            <span style={{ marginLeft: '6px' }}>{activeTab === 'moradores' ? 'Cadastrar Novo Morador' : 'Cadastrar Novo Item'}</span>
-          </button>
-        )}
-      </div>
-
-      {success && (
-        <div style={{ background: 'var(--secondary-light)', color: 'var(--secondary)', padding: '16px', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
-          <CheckCircle2 /> {editingId ? 'Registro atualizado com sucesso!' : 'Novo registro salvo com sucesso!'}
-        </div>
+      {loading ? (
+        <SkeletonList count={4} />
+      ) : isResidents ? (
+        residents.length === 0 ? (
+          <Card>
+            <EmptyState
+              icon={Users}
+              title="Nenhum morador cadastrado"
+              description="O cadastro dos moradores é a base de toda a operação: plantões, medicação e relatórios dependem dele."
+              action={<Button variant="primary" icon={Plus} onClick={openCreate}>Cadastrar morador</Button>}
+            />
+          </Card>
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <th>Morador</th>
+                <th>CPF</th>
+                <th>Nascimento</th>
+                <th>Alergias</th>
+                <th style={{ textAlign: 'right' }}>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {residents.map((r) => {
+                const age = calcAge(r.dateOfBirth);
+                return (
+                  <tr key={r.id}>
+                    <td>
+                      <div className="u-row u-gap-3">
+                        <Avatar name={r.name} size="sm" />
+                        <span className="table__cell-strong">{r.name}</span>
+                      </div>
+                    </td>
+                    <td className="table__cell-muted">{r.cpf || '—'}</td>
+                    <td className="table__cell-muted" style={{ whiteSpace: 'nowrap' }}>
+                      {formatDate(r.dateOfBirth)}
+                      {age != null && (
+                        <span className="u-subtle" style={{ fontSize: 'var(--text-xs)' }}>
+                          {' '}· {age} anos
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {r.allergies ? (
+                        <Badge tone="danger" icon={TriangleAlert}>{r.allergies}</Badge>
+                      ) : (
+                        <span className="table__cell-muted">Nenhuma</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="table__actions">
+                        <Button
+                          variant="ghost" size="sm" iconOnly icon={Pencil}
+                          onClick={() => openEditResident(r)} aria-label={`Editar ${r.name}`}
+                        />
+                        <Button
+                          variant="danger-ghost" size="sm" iconOnly icon={Trash2}
+                          onClick={() => removeResident(r)} aria-label={`Excluir ${r.name}`}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        )
+      ) : foods.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={Apple}
+            title="Despensa vazia"
+            description="Cadastre mantimentos, higiene e limpeza para acompanhar o consumo e gerar a lista de compras."
+            action={<Button variant="primary" icon={Plus} onClick={openCreate}>Cadastrar item</Button>}
+          />
+        </Card>
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Categoria</th>
+              <th>Estoque atual</th>
+              <th>Mínimo</th>
+              <th style={{ textAlign: 'right' }}>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {foods.map((f) => {
+              const low = (f.quantity ?? 0) <= (f.minQuantity ?? 0);
+              return (
+                <tr key={f.id}>
+                  <td className="table__cell-strong">{f.name}</td>
+                  <td><Badge tone="neutral">{f.category}</Badge></td>
+                  <td className="table__cell-num">
+                    <span style={{ color: low ? 'var(--danger)' : 'var(--text-strong)', fontWeight: 'var(--weight-semibold)' }}>
+                      {f.quantity} {f.unit}
+                    </span>
+                  </td>
+                  <td className="table__cell-muted table__cell-num">{f.minQuantity} {f.unit}</td>
+                  <td>
+                    <div className="table__actions">
+                      <Button
+                        variant="ghost" size="sm" iconOnly icon={Pencil}
+                        onClick={() => openEditFood(f)} aria-label={`Editar ${f.name}`}
+                      />
+                      <Button
+                        variant="danger-ghost" size="sm" iconOnly icon={Trash2}
+                        onClick={() => removeFood(f)} aria-label={`Excluir ${f.name}`}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
       )}
 
-      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        
-        {/* MODAL DE CADASTRO */}
-        {showForm && (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, overflowY: 'auto' }}>
-            <div className="card" style={{ width: '90%', maxWidth: '500px', padding: '32px', margin: '40px 0' }}>
-              
-              {/* Formulário: MORADORES */}
-              {activeTab === 'moradores' && (
-                <form onSubmit={saveResident}>
-                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                    <PlusCircle size={20} /> Novo Morador
-                  </h3>
-                  <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--border)' }}/>
-                  
-                  <label className="input-label">Nome Completo</label>
-                  <input required className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} value={resident.name} onChange={e => setResident({...resident, name: e.target.value})} />
-
-                  <label className="input-label">CPF</label>
-                  <input required placeholder="000.000.000-00" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} value={resident.cpf} onChange={e => setResident({...resident, cpf: e.target.value})} />
-
-                  <label className="input-label">Data de Nascimento</label>
-                  <input required type="date" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} value={resident.dateOfBirth} onChange={e => setResident({...resident, dateOfBirth: e.target.value})} />
-
-                  <label className="input-label">Alergias (Opcional)</label>
-                  <input className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '24px' }} value={resident.allergies} onChange={e => setResident({...resident, allergies: e.target.value})} />
-
-                  <div style={{ display: 'flex', gap: '12px' }}>
-                    <button type="button" className="btn" style={{ flex: 1, border: '1px solid var(--border)' }} onClick={() => setShowForm(false)}>Cancelar</button>
-                    <button type="submit" disabled={saving} className="btn btn-primary" style={{ flex: 2, padding: '12px' }}>
-                      <Save size={20} /> {saving ? 'Salvando...' : 'Salvar'}
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {/* Formulário: DESPENSA */}
-              {activeTab === 'despensa' && (
-                <form onSubmit={saveFood}>
-                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                    <PlusCircle size={20} /> Novo Item
-                  </h3>
-                  <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--border)' }}/>
-                  
-                  <label className="input-label">Nome do Item</label>
-                  <input required placeholder="Ex: Arroz Tipo 1" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} value={food.name} onChange={e => setFood({...food, name: e.target.value})} />
-
-                  <label className="input-label">Categoria</label>
-                  <select className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} value={food.category} onChange={e => setFood({...food, category: e.target.value})}>
-                    <option>Básico</option>
-                    <option>Limpeza</option>
-                    <option>Higiene</option>
-                    <option>Verduras</option>
-                    <option>Proteínas</option>
-                    <option>Moradores</option>
-                  </select>
-
-                  <label className="input-label">Unidade de Medida</label>
-                  <select className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} value={food.unit} onChange={e => setFood({...food, unit: e.target.value})}>
-                    <option>unidades</option>
-                    <option>kg</option>
-                    <option>litros</option>
-                    <option>pacotes</option>
-                  </select>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
-                    <div>
-                      <label className="input-label">Estoque Atual</label>
-                      <input required type="number" placeholder="Ex: 10" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={food.quantity} onChange={e => setFood({...food, quantity: e.target.value})} />
-                    </div>
-                    <div>
-                      <label className="input-label">Estoque Mínimo</label>
-                      <input required type="number" placeholder="Ex: 5" className="textarea-huge" style={{ minHeight: '40px', padding: '12px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={food.minQuantity} onChange={e => setFood({...food, minQuantity: e.target.value})} />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '12px' }}>
-                    <button type="button" className="btn" style={{ flex: 1, border: '1px solid var(--border)' }} onClick={() => setShowForm(false)}>Cancelar</button>
-                    <button type="submit" disabled={saving} className="btn btn-primary" style={{ flex: 2, padding: '12px' }}>
-                      <Save size={20} /> {saving ? 'Salvando...' : 'Salvar Novo Item'}
-                    </button>
-                  </div>
-                </form>
-              )}
+      {/* ----------------------- Formulários ----------------------- */}
+      <Modal
+        open={formOpen}
+        onClose={closeForm}
+        title={
+          isResidents
+            ? editingId ? 'Editar morador' : 'Novo morador'
+            : editingId ? 'Editar item' : 'Novo item de despensa'
+        }
+        footer={
+          <>
+            <Button variant="secondary" onClick={closeForm}>Cancelar</Button>
+            <Button
+              variant="primary" icon={Save} loading={saving}
+              onClick={isResidents ? saveResident : saveFood}
+            >
+              Salvar
+            </Button>
+          </>
+        }
+      >
+        {isResidents ? (
+          <form onSubmit={saveResident} className="u-stack u-gap-4">
+            <TextField
+              label="Nome completo" required autoFocus
+              value={resident.name}
+              onChange={(e) => setResident((r) => ({ ...r, name: e.target.value }))}
+            />
+            <div className="field-row">
+              <TextField
+                label="CPF" placeholder="000.000.000-00"
+                value={resident.cpf}
+                onChange={(e) => setResident((r) => ({ ...r, cpf: e.target.value }))}
+              />
+              <TextField
+                label="Data de nascimento" type="date" icon={Cake}
+                value={resident.dateOfBirth}
+                onChange={(e) => setResident((r) => ({ ...r, dateOfBirth: e.target.value }))}
+              />
             </div>
-          </div>
+            <SelectField
+              label="Sexo"
+              hint="Consta no cabeçalho da ficha de acompanhamento mensal."
+              value={resident.sex}
+              onChange={(e) => setResident((r) => ({ ...r, sex: e.target.value }))}
+            >
+              <option value="">Não informado</option>
+              <option value="Masculino">Masculino</option>
+              <option value="Feminino">Feminino</option>
+            </SelectField>
+            <TextField
+              label="Alergias"
+              hint="Aparece em destaque na passagem de plantão."
+              placeholder="Ex.: dipirona, frutos do mar"
+              value={resident.allergies}
+              onChange={(e) => setResident((r) => ({ ...r, allergies: e.target.value }))}
+            />
+
+            <div>
+              <p className="divider-label" style={{ marginBottom: 'var(--space-3)' }}>
+                Nível de autonomia
+              </p>
+              <div className="field-row">
+                {[
+                  ['Higiene pessoal', 'autonomy_hygiene'],
+                  ['Alimentação', 'autonomy_food'],
+                  ['Atividades diárias', 'autonomy_activities'],
+                ].map(([label, field]) => (
+                  <SelectField
+                    key={field}
+                    label={label}
+                    value={resident[field]}
+                    onChange={(e) => setResident((r) => ({ ...r, [field]: e.target.value }))}
+                  >
+                    <option value="">Não avaliado</option>
+                    {AUTONOMY_LEVELS.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
+                  </SelectField>
+                ))}
+              </div>
+              <span className="field__hint" style={{ display: 'block', marginTop: 'var(--space-2)' }}>
+                Preenche automaticamente a seção NÍVEL DE AUTONOMIA da ficha mensal.
+                Revise ao fechar cada mês.
+              </span>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={saveFood} className="u-stack u-gap-4">
+            <TextField
+              label="Nome do item" required autoFocus
+              placeholder="Ex.: Arroz tipo 1"
+              value={food.name}
+              onChange={(e) => setFood((f) => ({ ...f, name: e.target.value }))}
+            />
+            <div className="field-row">
+              <SelectField
+                label="Categoria"
+                value={food.category}
+                onChange={(e) => setFood((f) => ({ ...f, category: e.target.value }))}
+              >
+                {FOOD_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </SelectField>
+              <SelectField
+                label="Unidade"
+                value={food.unit}
+                onChange={(e) => setFood((f) => ({ ...f, unit: e.target.value }))}
+              >
+                {FOOD_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </SelectField>
+            </div>
+            <div className="field-row">
+              <TextField
+                label="Estoque atual" type="number" step="0.01" min="0" required
+                value={food.quantity}
+                onChange={(e) => setFood((f) => ({ ...f, quantity: e.target.value }))}
+              />
+              <TextField
+                label="Estoque mínimo" type="number" step="0.01" min="0" required
+                hint="Dispara o alerta de compra"
+                value={food.minQuantity}
+                onChange={(e) => setFood((f) => ({ ...f, minQuantity: e.target.value }))}
+              />
+            </div>
+          </form>
         )}
-
-        {/* COLUNA DIREITA: TABELAS */}
-        <div className="card" style={{ flex: '2', padding: '0', overflowX: 'auto', minWidth: '100%' }}>
-          
-          {/* Tabela: MORADORES */}
-          {activeTab === 'moradores' && (
-            <table className="desktop-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr>
-                  <th style={{ padding: '16px' }}>Nome</th>
-                  <th style={{ padding: '16px' }}>CPF</th>
-                  <th style={{ padding: '16px' }}>Nascimento</th>
-                  <th style={{ padding: '16px', textAlign: 'center' }}>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loadingList ? <tr><td colSpan="4" style={{ padding: '16px', textAlign: 'center' }}>Carregando...</td></tr> : 
-                  residents.map(r => (
-                    <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', background: editingId === r.id ? 'var(--background)' : '' }}>
-                      {editingId === r.id ? (
-                        <>
-                          <td style={{ padding: '8px' }}><input style={{ padding: '6px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={resident.name} onChange={e => setResident({...resident, name: e.target.value})} /></td>
-                          <td style={{ padding: '8px' }}><input style={{ padding: '6px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={resident.cpf} onChange={e => setResident({...resident, cpf: e.target.value})} /></td>
-                          <td style={{ padding: '8px' }}><input type="date" style={{ padding: '6px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={resident.dateOfBirth} onChange={e => setResident({...resident, dateOfBirth: e.target.value})} /></td>
-                          <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                            <button className="btn btn-primary" style={{ padding: '6px 12px', marginRight: '4px' }} onClick={saveResident}><Save size={16}/></button>
-                            <button className="btn" style={{ padding: '6px 12px', border: '1px solid var(--border)' }} onClick={cancelEdit}>X</button>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td style={{ padding: '10px 16px', fontWeight: 'bold' }}>{r.name}</td>
-                          <td style={{ padding: '10px 16px', color: 'var(--text-muted)' }}>{r.cpf || '-'}</td>
-                          <td style={{ padding: '10px 16px', color: 'var(--text-muted)' }}>{formatDate(r.dateOfBirth)}</td>
-                          <td style={{ padding: '10px 16px', textAlign: 'center' }}>
-                            <button className="btn" style={{ padding: '6px', background: 'transparent', color: 'var(--primary)', marginRight: '8px' }} onClick={() => editResident(r)}><Edit2 size={16}/></button>
-                            <button className="btn" style={{ padding: '6px', background: 'transparent', color: 'var(--danger)' }} onClick={() => deleteResident(r.id)}><Trash2 size={16}/></button>
-                          </td>
-                        </>
-                      )}
-                    </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {/* Tabela: DESPENSA */}
-          {activeTab === 'despensa' && (
-            <table className="desktop-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr>
-                  <th style={{ padding: '16px' }}>Item</th>
-                  <th style={{ padding: '16px' }}>Categoria</th>
-                  <th style={{ padding: '16px' }}>Estoque Atual</th>
-                  <th style={{ padding: '16px' }}>Mínimo p/ Alerta</th>
-                  <th style={{ padding: '16px', textAlign: 'center' }}>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loadingList ? <tr><td colSpan="5" style={{ padding: '16px', textAlign: 'center' }}>Carregando...</td></tr> : 
-                  foods.map(f => (
-                    <tr key={f.id} style={{ borderBottom: '1px solid var(--border)', background: editingId === f.id ? 'var(--background)' : '' }}>
-                      {editingId === f.id ? (
-                        <>
-                          <td style={{ padding: '8px' }}>
-                            <input style={{ padding: '6px', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', marginBottom: '4px', border: '1px solid var(--border)', borderRadius: '6px' }} value={food.name} onChange={e => setFood({...food, name: e.target.value})} placeholder="Item" />
-                            <select style={{ padding: '6px', fontSize: '0.8rem', width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={food.unit} onChange={e => setFood({...food, unit: e.target.value})}>
-                              <option>unidades</option>
-                              <option>kg</option>
-                              <option>litros</option>
-                              <option>pacotes</option>
-                            </select>
-                          </td>
-                          <td style={{ padding: '8px' }}>
-                            <select style={{ padding: '6px', fontSize: '0.9rem', width: '110px', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={food.category} onChange={e => setFood({...food, category: e.target.value})}>
-                              <option>Básico</option>
-                              <option>Limpeza</option>
-                              <option>Higiene</option>
-                              <option>Verduras</option>
-                              <option>Proteínas</option>
-                              <option>Moradores</option>
-                            </select>
-                          </td>
-                          <td style={{ padding: '8px' }}><input type="number" style={{ padding: '6px', fontSize: '0.9rem', width: '80px', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={food.quantity} onChange={e => setFood({...food, quantity: e.target.value})} placeholder="Qtd" /></td>
-                          <td style={{ padding: '8px' }}><input type="number" style={{ padding: '6px', fontSize: '0.9rem', width: '80px', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: '6px' }} value={food.minQuantity} onChange={e => setFood({...food, minQuantity: e.target.value})} placeholder="Mín." /></td>
-                          <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                            <button className="btn btn-primary" style={{ padding: '6px 12px', marginRight: '4px' }} onClick={saveFood}><Save size={16}/></button>
-                            <button className="btn" style={{ padding: '6px 12px', border: '1px solid var(--border)' }} onClick={cancelEdit}>X</button>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td style={{ padding: '10px 16px', fontWeight: 'bold' }}>{f.name}</td>
-                          <td style={{ padding: '10px 16px' }}>
-                            <span style={{ padding: '4px 8px', borderRadius: '12px', fontSize: '0.8rem', background: 'var(--background)' }}>
-                              {f.category}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 16px', color: 'var(--primary-dark)', fontWeight: 'bold' }}>{f.quantity} {f.unit}</td>
-                          <td style={{ padding: '10px 16px', color: 'var(--text-muted)' }}>{f.minQuantity} {f.unit}</td>
-                          <td style={{ padding: '10px 16px', textAlign: 'center' }}>
-                            <button className="btn" style={{ padding: '6px', background: 'transparent', color: 'var(--primary)', marginRight: '8px' }} onClick={() => editFood(f)}><Edit2 size={16}/></button>
-                            <button className="btn" style={{ padding: '6px', background: 'transparent', color: 'var(--danger)' }} onClick={() => deleteFood(f.id)}><Trash2 size={16}/></button>
-                          </td>
-                        </>
-                      )}
-                    </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-        </div>
-      </div>
+      </Modal>
     </div>
   );
 }

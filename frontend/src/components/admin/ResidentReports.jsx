@@ -1,330 +1,949 @@
-import React, { useState, useEffect } from 'react';
-import { FileText, Printer, ChevronDown, Calendar, Edit3, Save, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle, BookOpen, CalendarDays, Check, CheckCircle2, ClipboardList,
+  Droplets, Eye, FileText, LayoutDashboard, MessageSquareText, Pill, Printer,
+  RefreshCw, Save, Siren, Sparkles, Trash2, User, Utensils,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { uid } from '../../lib/id';
+import MonthlySheet from './MonthlySheet';
+import { behaviorTone, severityTone } from '../../lib/clinical';
+import {
+  firstName, formatDate, formatDateTime, formatDayMonth, formatMonthLabel,
+  formatTime, formatWeekday, toDate, toISODate, toMonthKey,
+} from '../../lib/format';
+import {
+  availableMonths, buildMonthlySummary, draftNarrative, groupEntriesByDay,
+  scanGeneralNotes, shiftLabel, classifyFood, classifyHygiene, classifyMeds,
+  FOOD_LABELS, HYGIENE_LABELS, MEDS_LABELS,
+} from '../../lib/shiftReports';
+import {
+  Alert, Avatar, Badge, Button, Card, CardBody, CardHeader, EmptyState, Meter,
+  PageHeader, Segmented, SelectField, SkeletonList, StackedMeter, Stat,
+  StatGrid, Tabs, TextareaField, Timeline, TimelineItem, useConfirm, useToast,
+} from '../ui';
 
-// Helper de formatação de data
-const formatDateBR = (isoString) => {
-  if (!isoString) return '';
-  return new Date(isoString).toLocaleDateString('pt-BR');
-};
-
-const formatTimeBR = (isoString) => {
-  if (!isoString) return '';
-  return new Date(isoString).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-};
+/** A tabela de parecer mensal é opcional: o sistema funciona sem ela. */
+function isMissingTable(error) {
+  if (!error) return false;
+  return (
+    error.code === '42P01' ||
+    /does not exist|schema cache|could not find the table/i.test(error.message || '')
+  );
+}
 
 export default function ResidentReports({ currentUser }) {
-  const [selectedResident, setSelectedResident] = useState('');
+  const toast = useToast();
+  const confirm = useConfirm();
+
+  const [tab, setTab] = useState('mensal');
   const [residents, setResidents] = useState([]);
-  const [activeTab, setActiveTab] = useState('diario');
-  const [reportData, setReportData] = useState({
-    enfermagem: '',
-    cuidadoras: '',
-    incidentes: ''
-  });
-  const [isEditing, setIsEditing] = useState(true);
+  const [reports, setReports] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [incidents, setIncidents] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Daily Report State
-  const [shiftReports, setShiftReports] = useState([]);
-  const [uniqueDates, setUniqueDates] = useState([]);
-  const [selectedDateFilter, setSelectedDateFilter] = useState('');
+  // Visão diária
+  const [dayFilter, setDayFilter] = useState(toISODate(new Date()));
 
-  const fetchResidentsAndReports = async () => {
-    const { data: resData } = await supabase.from('Resident').select('*');
-    if (resData) {
-      setResidents(resData);
-      if (resData.length > 0) setSelectedResident(resData[0].name);
+  // Consolidado mensal
+  const [monthView, setMonthView] = useState('ficha');
+  const [onlyWritten, setOnlyWritten] = useState(false);
+  const [showGeneral, setShowGeneral] = useState(true);
+  const [residentId, setResidentId] = useState('');
+  const [monthKey, setMonthKey] = useState(toMonthKey(new Date()));
+  const [narrative, setNarrative] = useState('');
+  const [storedNarrative, setStoredNarrative] = useState(null);
+  const [narrativeTable, setNarrativeTable] = useState(true);
+  const [savingNarrative, setSavingNarrative] = useState(false);
+
+  /* ----------------------------- Dados ----------------------------- */
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [
+      { data: res, error: resError },
+      { data: shifts, error: shiftError },
+      { data: evs },
+      { data: incs },
+    ] = await Promise.all([
+      supabase.from('Resident').select('*').order('name'),
+      supabase.from('ShiftReport').select('*').order('date', { ascending: false }),
+      supabase.from('Event').select('*'),
+      supabase.from('Incident').select('*').order('occurred_at', { ascending: false }),
+    ]);
+
+    if (resError || shiftError) toast.error('Não foi possível carregar os relatórios.');
+
+    setResidents(res || []);
+    setReports(shifts || []);
+    setEvents(evs || []);
+    setIncidents(incs || []);
+    if (res?.length) setResidentId((prev) => prev || res[0].id);
+    setLoading(false);
+  }, [toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const months = useMemo(() => availableMonths(reports), [reports]);
+
+  const resident = useMemo(
+    () => residents.find((r) => r.id === residentId),
+    [residents, residentId]
+  );
+
+  const summary = useMemo(
+    () => (residentId ? buildMonthlySummary(reports, residentId, monthKey) : null),
+    [reports, residentId, monthKey]
+  );
+
+  const suggestion = useMemo(
+    () => (summary ? draftNarrative(summary, resident?.name || 'o morador') : ''),
+    [summary, resident]
+  );
+
+  const days = useMemo(
+    () => (summary ? groupEntriesByDay(summary.entries) : []),
+    [summary]
+  );
+
+  const incidentesDoMorador = useMemo(() => {
+    if (!residentId) return [];
+    const [y, mo] = monthKey.split('-').map(Number);
+    return incidents
+      .filter((inc) => {
+        const ids = Array.isArray(inc.resident_ids) ? inc.resident_ids : [];
+        if (!ids.includes(residentId)) return false;
+        const d = toDate(inc.occurred_at);
+        return d && d.getFullYear() === y && d.getMonth() === mo - 1;
+      })
+      .sort((a, b) => String(a.occurred_at).localeCompare(String(b.occurred_at)));
+  }, [incidents, residentId, monthKey]);
+
+  const daysToRead = useMemo(
+    () => (onlyWritten ? days.filter((d) => d.hasWriting) : days),
+    [days, onlyWritten]
+  );
+
+  const daysWithWriting = useMemo(() => days.filter((d) => d.hasWriting).length, [days]);
+
+  /* ------------------ Parecer salvo da supervisora ------------------ */
+  const loadNarrative = useCallback(async () => {
+    if (!residentId) return;
+
+    const { data, error } = await supabase
+      .from('MonthlyReport')
+      .select('*')
+      .eq('resident_id', residentId)
+      .eq('month', monthKey)
+      .maybeSingle();
+
+    if (isMissingTable(error)) {
+      setNarrativeTable(false);
+      setStoredNarrative(null);
+      setNarrative('');
+      return;
     }
 
-    const { data: shiftData } = await supabase.from('ShiftReport').select('*').order('date', { ascending: false });
-    if (shiftData) {
-      setShiftReports(shiftData);
-      
-      const today = new Date().toISOString().split('T')[0];
-      setSelectedDateFilter(today);
+    setNarrativeTable(true);
+    setStoredNarrative(data || null);
+    setNarrative(data?.narrative || '');
+  }, [residentId, monthKey]);
+
+  useEffect(() => { loadNarrative(); }, [loadNarrative]);
+
+  const saveNarrative = async () => {
+    if (!narrative.trim()) {
+      toast.warning('Escreva o parecer antes de salvar.');
+      return;
     }
+
+    setSavingNarrative(true);
+    const payload = {
+      resident_id: residentId,
+      resident_name: resident?.name || '',
+      month: monthKey,
+      narrative: narrative.trim(),
+      author_name: currentUser?.name || 'Supervisão',
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = storedNarrative
+      ? await supabase.from('MonthlyReport').update(payload).eq('id', storedNarrative.id)
+      : await supabase.from('MonthlyReport').insert([{ id: uid(), ...payload }]);
+
+    setSavingNarrative(false);
+
+    if (isMissingTable(error)) {
+      setNarrativeTable(false);
+      return;
+    }
+    if (error) {
+      toast.error(`Erro ao salvar o parecer: ${error.message}`);
+      return;
+    }
+    toast.success('Parecer mensal salvo.');
+    loadNarrative();
   };
 
-  useEffect(() => {
-    fetchResidentsAndReports();
-  }, []);
+  /* --------------------------- Visão diária --------------------------- */
+  const reportsOfDay = useMemo(
+    () => reports.filter((r) => String(r.date).startsWith(dayFilter)),
+    [reports, dayFilter]
+  );
 
-  const handleDeleteReport = async (id) => {
-    if (window.confirm('Tem certeza que deseja apagar permanentemente este relatório de plantão?')) {
-      await supabase.from('ShiftReport').delete().eq('id', id);
-      fetchResidentsAndReports();
+  const deleteReport = async (report) => {
+    const ok = await confirm({
+      title: 'Apagar registro de plantão',
+      message: `O plantão de ${formatDateTime(report.date)}, assinado por ${report.caregiver_name}, será apagado.`,
+      warning:
+        'Prontuário não deveria ser apagado: a exclusão é permanente e não deixa rastro de quem removeu. Considere manter o registro.',
+      confirmLabel: 'Apagar definitivamente',
+    });
+    if (!ok) return;
+
+    const { error } = await supabase.from('ShiftReport').delete().eq('id', report.id);
+    if (error) {
+      toast.error('Erro ao apagar o registro.');
+      return;
     }
+    toast.success('Registro apagado.');
+    load();
   };
 
-  // Filtrar todos os relatórios do dia selecionado
-  const reportsOfDay = shiftReports.filter(r => r.date.startsWith(selectedDateFilter));
+  if (loading) {
+    return (
+      <div>
+        <PageHeader title="Relatórios" description="Carregando…" />
+        <SkeletonList count={3} />
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div className="print-hide" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h2 style={{ marginBottom: '4px' }}>Evolução e Relatórios</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Acompanhe e emita os relatórios.</p>
-        </div>
-        {activeTab === 'mensal' && !isEditing && (
-          <button className="btn btn-primary" style={{ padding: '12px 24px', fontSize: '1rem' }} onClick={() => window.print()}>
-            <Printer size={20} />
-            Imprimir Relatório
-          </button>
-        )}
+      <PageHeader
+        title="Evolução e relatórios"
+        description="Consolidação dos plantões para acompanhamento e auditoria."
+        actions={
+          <Button variant="secondary" icon={Printer} onClick={() => window.print()} className="print-hide">
+            Imprimir
+          </Button>
+        }
+      />
+
+      <div className="print-hide" style={{ marginBottom: 'var(--space-6)' }}>
+        <Tabs
+          ariaLabel="Tipo de relatório"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'mensal', label: 'Consolidado mensal por morador', icon: FileText },
+            { value: 'diario', label: 'Plantões do dia', icon: CalendarDays },
+          ]}
+        />
       </div>
 
-      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        {/* Filtros */}
-        <div className="card print-hide" style={{ width: '100%', maxWidth: '300px', flexShrink: 0 }}>
-          <h3 style={{ marginBottom: '16px', fontSize: '1.2rem' }}>Filtros</h3>
-          {activeTab === 'mensal' && (
-            <>
-              <label className="input-label" style={{ fontSize: '0.95rem' }}>Morador (Mensal)</label>
-              <div style={{ position: 'relative', marginBottom: '16px' }}>
-                <select 
-                  className="textarea-huge" 
-                  style={{ minHeight: '40px', padding: '8px', fontSize: '0.95rem', appearance: 'none', cursor: 'pointer' }}
-                  value={selectedResident}
-                  onChange={(e) => setSelectedResident(e.target.value)}
+      {/* ================= CONSOLIDADO MENSAL ================= */}
+      {tab === 'mensal' && (
+        <div>
+          <Card className="print-hide" style={{ marginBottom: 'var(--space-6)' }}>
+            <CardBody>
+              <div className="field-row">
+                <SelectField
+                  label="Morador" icon={User}
+                  value={residentId}
+                  onChange={(e) => setResidentId(e.target.value)}
                 >
-                  {residents.map(r => (
-                    <option key={r.id}>{r.name}</option>
-                  ))}
-                </select>
-                <ChevronDown size={20} style={{ position: 'absolute', right: '12px', top: '10px', color: 'var(--text-muted)' }}/>
-              </div>
-            </>
-          )}
+                  {residents.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </SelectField>
 
-          <label className="input-label" style={{ fontSize: '0.95rem' }}>{activeTab === 'diario' ? 'Data do Plantão' : 'Período Base'}</label>
-          <div style={{ position: 'relative', marginBottom: '8px' }}>
-            {activeTab === 'diario' ? (
-              <input 
-                type="date"
-                className="textarea-huge" 
-                style={{ height: '40px', padding: '0 12px', fontSize: '0.95rem', width: '100%', boxSizing: 'border-box', textAlign: 'center', display: 'block', lineHeight: '38px' }}
-                value={selectedDateFilter}
-                onChange={(e) => setSelectedDateFilter(e.target.value)}
+                <SelectField
+                  label="Mês de referência"
+                  value={monthKey}
+                  onChange={(e) => setMonthKey(e.target.value)}
+                >
+                  {months.map((m) => <option key={m} value={m}>{formatMonthLabel(m)}</option>)}
+                </SelectField>
+              </div>
+            </CardBody>
+          </Card>
+
+          <div className="print-hide" style={{ marginBottom: 'var(--space-6)' }}>
+            <Segmented
+              ariaLabel="Modo de visualização do mês"
+              value={monthView}
+              onChange={setMonthView}
+              options={[
+                { value: 'ficha', label: 'Ficha mensal', icon: ClipboardList },
+                { value: 'leitura', label: 'Leitura', icon: BookOpen },
+                { value: 'resumo', label: 'Resumo', icon: LayoutDashboard },
+              ]}
+            />
+          </div>
+
+          {/* Cabeçalho que só aparece no papel (a ficha traz o seu próprio) */}
+          <div className={monthView === 'ficha' ? 'u-sr-only' : 'print-doc-header'}>
+            <img src="/logo.png" alt="" className="print-doc-header__logo" />
+            <div className="print-doc-header__title">Relatório Mensal de Evolução</div>
+            <div className="print-doc-header__subtitle">
+              {resident?.name} · {formatMonthLabel(monthKey)}
+              <br />
+              Aurean Residência Terapêutica — Porto Feliz/SP
+            </div>
+          </div>
+
+          {!residents.length ? (
+            <Card>
+              <EmptyState
+                icon={User}
+                title="Nenhum morador cadastrado"
+                description="Cadastre os moradores para gerar relatórios mensais."
               />
-            ) : (
-              <>
-                <select 
-                  className="textarea-huge" 
-                  style={{ height: '40px', padding: '0 12px', fontSize: '0.95rem', appearance: 'none', cursor: 'pointer', width: '100%', boxSizing: 'border-box', textAlign: 'center' }}
-                >
-                  <option>Maio / 2026</option>
-                  <option>Abril / 2026</option>
-                </select>
-                <ChevronDown size={20} style={{ position: 'absolute', right: '12px', top: '10px', color: 'var(--text-muted)' }}/>
-              </>
-            )}
-          </div>
-        </div>
+            </Card>
+          ) : !summary || summary.totalPlantoes === 0 ? (
+            <Card>
+              <EmptyState
+                icon={FileText}
+                title="Sem registros neste mês"
+                description={`Não há passagens de plantão com anotações sobre ${resident?.name} em ${formatMonthLabel(monthKey)}.`}
+              />
+            </Card>
+          ) : (
+            <div className="u-stack u-gap-6">
+              {monthView === 'ficha' && (
+                <MonthlySheet
+                  resident={resident}
+                  monthKey={monthKey}
+                  summary={summary}
+                  events={events}
+                  incidents={incidents}
+                  currentUser={currentUser}
+                />
+              )}
 
-        {/* Visualização do Relatório */}
-        <div className="print-full-width" style={{ flex: 1 }}>
-          {/* Tabs */}
-          <div className="print-hide" style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
-            <button 
-              className={`btn ${activeTab === 'diario' ? 'btn-primary' : ''}`} 
-              style={{ background: activeTab !== 'diario' ? 'white' : '', border: '1px solid var(--border)', flex: '1 1 150px' }} 
-              onClick={() => setActiveTab('diario')}
-            >
-              <Calendar size={18}/> Visão Diária Geral
-            </button>
-            <button 
-              className={`btn ${activeTab === 'mensal' ? 'btn-primary' : ''}`} 
-              style={{ background: activeTab !== 'mensal' ? 'white' : '', border: '1px solid var(--border)', flex: '1 1 150px' }} 
-              onClick={() => setActiveTab('mensal')}
-            >
-              <FileText size={18}/> Relatório Mensal Individual
-            </button>
-          </div>
+              {monthView === 'resumo' && (
+                <>
+              {/* ---------- Indicadores ---------- */}
+              <StatGrid>
+                <Stat
+                  label="Plantões registrados" value={summary.totalPlantoes}
+                  hint={`em ${summary.diasComRegistro} dias distintos`} icon={CalendarDays}
+                />
+                <Stat
+                  label="Observações lançadas" value={summary.observacoes.length}
+                  hint="anotações específicas das cuidadoras" icon={MessageSquareText}
+                />
+                <Stat
+                  label="Ocorrências de recusa" value={summary.alertas.length}
+                  tone={summary.alertas.length > 0 ? 'warning' : 'success'}
+                  hint="higiene, alimentação ou medicação" icon={AlertTriangle}
+                />
+                <Stat
+                  label="Dias sem registro" value={summary.diasSemRegistro.length}
+                  tone={summary.diasSemRegistro.length > 0 ? 'danger' : 'success'}
+                  hint={summary.diasSemRegistro.length > 0 ? 'lacuna de prontuário' : 'cobertura completa'}
+                />
+                <Stat
+                  label="Relatos gerais a apurar" value={summary.relatosAApurar.length}
+                  tone={summary.relatosAApurar.length > 0 ? 'warning' : 'default'}
+                  hint="texto livre com termo de alerta" icon={Eye}
+                />
+                <Stat
+                  label="Intercorrências" value={incidentesDoMorador.length}
+                  tone={incidentesDoMorador.length > 0 ? 'danger' : 'success'}
+                  hint="registradas com este morador envolvido" icon={Siren}
+                />
+              </StatGrid>
 
-          {activeTab === 'diario' && (
-            <div>
-              <div className="print-hide" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-                 <button className="btn btn-primary" onClick={() => window.print()} style={{ padding: '8px 16px' }}>
-                    <Printer size={18} style={{ marginRight: '8px' }} />
-                    Imprimir Dia
-                 </button>
-              </div>
+              {summary.diasSemRegistro.length > 0 && (
+                <Alert tone="warning" title="Dias sem passagem de plantão registrada">
+                  Dias {summary.diasSemRegistro.join(', ')} de {formatMonthLabel(monthKey)}.
+                  Lacunas no prontuário são o primeiro item verificado em fiscalização.
+                </Alert>
+              )}
 
-              {/* Cabeçalho de Impressão */}
-              <div className="print-only" style={{ display: 'none', textAlign: 'center', borderBottom: '2px solid var(--border)', paddingBottom: '16px', marginBottom: '24px' }}>
-                  <h1 style={{ color: 'var(--primary-dark)', marginBottom: '8px', fontSize: '1.6rem' }}>Residência Terapêutica de Porto Feliz</h1>
-                  <h2 style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>Relatório diário de passagem de plantão</h2>
-              </div>
+              {/* ---------- Intercorrências ---------- */}
+              {incidentesDoMorador.length > 0 && (
+                <Card accent="danger" className="print-avoid-break">
+                  <CardHeader
+                    icon={Siren}
+                    title={`Intercorrências (${incidentesDoMorador.length})`}
+                    subtitle="Episódios registrados com este morador entre os envolvidos"
+                  />
+                  <CardBody>
+                    <Timeline>
+                      {incidentesDoMorador.map((inc, idx) => (
+                        <TimelineItem
+                          key={inc.id}
+                          tone="danger"
+                          isLast={idx === incidentesDoMorador.length - 1}
+                          date={formatDayMonth(inc.occurred_at)}
+                          meta={<span>{inc.reporter_name}</span>}
+                        >
+                          <div className="u-row u-wrap u-gap-2" style={{ marginBottom: 'var(--space-2)' }}>
+                            <Badge tone={severityTone(inc.severity)} icon={Siren}>{inc.type}</Badge>
+                            <Badge tone={severityTone(inc.severity)}>{inc.severity}</Badge>
+                            {(Array.isArray(inc.resident_names) ? inc.resident_names : []).map((n) => (
+                              <Badge key={n} tone="neutral">{n}</Badge>
+                            ))}
+                          </div>
+                          <p>{inc.description}</p>
+                          {inc.conduct && (
+                            <p className="u-muted" style={{ fontSize: 'var(--text-sm)', marginTop: 'var(--space-2)' }}>
+                              <strong>Conduta:</strong> {inc.conduct}
+                            </p>
+                          )}
+                          {inc.notified && (
+                            <p className="u-subtle" style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--space-1)' }}>
+                              Comunicado a: {inc.notified}
+                            </p>
+                          )}
+                        </TimelineItem>
+                      ))}
+                    </Timeline>
+                  </CardBody>
+                </Card>
+              )}
 
-              {reportsOfDay.length === 0 ? (
-                <div className="card" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  Nenhum registro de plantão encontrado para exibição nesta data.
-                </div>
-              ) : (
-                reportsOfDay.map((report) => (
-                  <div key={report.id} className="card" style={{ padding: '32px', marginBottom: '24px', position: 'relative' }}>
-                    <button 
-                      className="btn print-hide" 
-                      style={{ position: 'absolute', top: '24px', right: '24px', padding: '8px', color: 'var(--danger)', background: 'transparent' }}
-                      title="Apagar este relatório"
-                      onClick={() => handleDeleteReport(report.id)}
-                    >
-                      <Trash2 size={20} />
-                    </button>
-
-                    <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '1.4rem', marginBottom: '8px' }}>Registro de Plantão</h3>
-                      <span style={{ background: 'var(--primary-light)', color: 'var(--primary-dark)', padding: '4px 12px', borderRadius: '16px', fontWeight: 'bold' }}>
-                        {formatDateBR(report.date)} às {formatTimeBR(report.date)}
-                      </span>
+              {/* ---------- Comportamento observado ---------- */}
+              {summary.behavior.alteracoes.length > 0 && (
+                <Card className="print-avoid-break">
+                  <CardHeader
+                    title="Alterações de comportamento observadas"
+                    subtitle="Marcadas pelas cuidadoras na passagem de plantão"
+                  />
+                  <CardBody>
+                    <div className="u-stack u-gap-4">
+                      {summary.behavior.alteracoes.map((alt) => (
+                        <Meter
+                          key={alt.label}
+                          label={alt.label}
+                          value={alt.count}
+                          total={summary.totalPlantoes}
+                          tone={behaviorTone(alt.label) === 'danger' ? 'danger' : 'warning'}
+                          hint={`Dias: ${alt.dias.map((d) => String(d.day).padStart(2, '0')).join(', ')}`}
+                        />
+                      ))}
                     </div>
-                    
-                    <div className="print-avoid-break" style={{ marginBottom: '24px' }}>
-                      <h4 style={{ color: 'var(--warning)', marginBottom: '8px', fontSize: '1.2rem' }}>Relato Geral do Plantão</h4>
-                      <div style={{ background: 'rgba(245, 158, 11, 0.1)', borderLeft: '4px solid var(--warning)', padding: '16px', borderRadius: '0 8px 8px 0', color: 'var(--text-main)', lineHeight: '1.6' }}>
-                        <strong>Relato registrado:</strong> {report.general_notes || 'Sem relato geral para este plantão.'}
-                      </div>
-                    </div>
+                  </CardBody>
+                </Card>
+              )}
 
-                    <details style={{ marginBottom: '32px', cursor: 'pointer' }} className="print-avoid-break">
-                      <summary style={{ fontSize: '1.1rem', color: 'var(--primary)', fontWeight: 'bold', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                        Ver ocorrências detalhadas por morador
-                      </summary>
-                      <div style={{ marginTop: '16px' }}>
-                        {residents.map((res, idx) => {
-                          const resData = report.reports?.[res.id];
-                          if (!resData) return null;
+              {/* ---------- Composição do mês ---------- */}
+              <Card>
+                <CardHeader
+                  title="Como o mês transcorreu"
+                  subtitle="Distribuição dos registros das cuidadoras ao longo do período"
+                />
+                <CardBody>
+                  <div className="u-stack u-gap-6">
+                    <StackedMeter
+                      label="Higiene pessoal"
+                      total={summary.totalPlantoes}
+                      segments={summary.hygiene.segments}
+                    />
+                    <StackedMeter
+                      label="Alimentação e hidratação"
+                      total={summary.totalPlantoes}
+                      segments={summary.food.segments}
+                    />
+                    <StackedMeter
+                      label="Medicação"
+                      total={summary.totalPlantoes}
+                      segments={summary.meds.segments}
+                    />
+                  </div>
+                </CardBody>
+              </Card>
 
-                          return (
-                            <div key={idx} style={{ background: 'var(--background)', padding: '16px', borderRadius: '8px', marginBottom: '12px' }}>
-                              <h5 style={{ fontSize: '1.1rem', marginBottom: '8px' }}>{res.name}</h5>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                                <div><strong>Higiene:</strong> {resData.hygiene}</div>
-                                <div><strong>Alimentação:</strong> {resData.food}</div>
-                                <div><strong>Medicação:</strong> {resData.meds}</div>
-                              </div>
-                              {resData.notes && (
-                                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border)', fontSize: '0.9rem' }}>
-                                  <strong>Obs:</strong> {resData.notes}
-                                </div>
-                              )}
+              {/* ---------- Ocorrências que exigem atenção ---------- */}
+              {summary.alertas.length > 0 && (
+                <Card accent="warning" className="print-avoid-break">
+                  <CardHeader
+                    icon={AlertTriangle}
+                    title={`Ocorrências de recusa (${summary.alertas.length})`}
+                    subtitle="Dias em que houve recusa de banho, alimentação ou medicação"
+                  />
+                  <CardBody>
+                    <Timeline>
+                      {summary.alertas.map((entry, idx) => {
+                        const flags = [];
+                        if (classifyHygiene(entry.hygiene) === 'recusou') {
+                          flags.push({ icon: Droplets, label: HYGIENE_LABELS.recusou });
+                        }
+                        if (classifyFood(entry.food) === 'recusou') {
+                          flags.push({ icon: Utensils, label: FOOD_LABELS.recusou });
+                        }
+                        if (classifyMeds(entry.meds) === 'recusou') {
+                          flags.push({ icon: Pill, label: MEDS_LABELS.recusou });
+                        }
+                        return (
+                          <TimelineItem
+                            key={`${entry.reportId}-${idx}`}
+                            tone="warning"
+                            isLast={idx === summary.alertas.length - 1}
+                            date={formatDayMonth(entry.date)}
+                            meta={
+                              <>
+                                <span>{formatWeekday(entry.date, true)}</span>
+                                <span>·</span>
+                                <span>{entry.author}</span>
+                              </>
+                            }
+                          >
+                            <div className="u-row u-wrap u-gap-2" style={{ marginBottom: 'var(--space-2)' }}>
+                              {flags.map((f) => (
+                                <Badge key={f.label} tone="warning" icon={f.icon}>{f.label}</Badge>
+                              ))}
                             </div>
-                          )
-                        })}
-                      </div>
-                    </details>
+                            {entry.notes && <p>{entry.notes}</p>}
+                          </TimelineItem>
+                        );
+                      })}
+                    </Timeline>
+                  </CardBody>
+                </Card>
+              )}
 
-                    <div className="print-avoid-break" style={{ padding: '16px', background: 'var(--background)', borderRadius: '8px', border: '1px dashed var(--border)' }}>
-                      <p style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
-                        <span style={{ color: 'var(--primary)', fontSize: '1.2rem' }}>✅</span>
-                        <strong>Assinado eletrônicamente e validado por senha do usuário:</strong> {report.caregiver_name || 'Usuário Não Identificado'}
+              {/* ---------- Todas as observações do mês ---------- */}
+              <Card className="print-avoid-break">
+                <CardHeader
+                  icon={MessageSquareText}
+                  title={`Observações das cuidadoras (${summary.observacoes.length})`}
+                  subtitle="Tudo o que foi anotado sobre este morador no período"
+                />
+                <CardBody>
+                  {summary.observacoes.length === 0 ? (
+                    <EmptyState
+                      icon={CheckCircle2}
+                      title="Nenhuma observação específica"
+                      description="Não houve anotações individuais sobre este morador no período."
+                    />
+                  ) : (
+                    <Timeline>
+                      {summary.observacoes.map((obs, idx) => (
+                        <TimelineItem
+                          key={`${obs.day}-${idx}`}
+                          isLast={idx === summary.observacoes.length - 1}
+                          date={formatDayMonth(obs.date)}
+                          meta={
+                            <>
+                              <span>{formatWeekday(obs.date, true)}</span>
+                              <span>·</span>
+                              <span>{obs.author}</span>
+                            </>
+                          }
+                        >
+                          {obs.text}
+                        </TimelineItem>
+                      ))}
+                    </Timeline>
+                  )}
+                </CardBody>
+              </Card>
+
+                </>
+              )}
+
+              {/* ---------- Leitura corrida do mês ---------- */}
+              {monthView === 'leitura' && (
+                <>
+                  <Card className="print-hide">
+                    <CardBody tight>
+                      <div className="u-between u-gap-4 u-wrap">
+                        <Segmented
+                          ariaLabel="Filtrar dias exibidos"
+                          value={onlyWritten ? 'escritos' : 'todos'}
+                          onChange={(v) => setOnlyWritten(v === 'escritos')}
+                          options={[
+                            { value: 'todos', label: `Todos os dias (${days.length})` },
+                            { value: 'escritos', label: `Só com anotação sobre ele(a) (${daysWithWriting})` },
+                          ]}
+                        />
+
+                        <label className="checkbox">
+                          <input
+                            type="checkbox"
+                            checked={showGeneral}
+                            onChange={(e) => setShowGeneral(e.target.checked)}
+                          />
+                          <span className="checkbox__box" aria-hidden="true">
+                            <Check size={13} strokeWidth={3} />
+                          </span>
+                          <span style={{ fontSize: 'var(--text-md)' }}>
+                            Incluir relato geral da casa
+                          </span>
+                        </label>
+                      </div>
+
+                      <p
+                        className="field__hint"
+                        style={{ marginTop: 'var(--space-3)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--border-subtle)' }}
+                      >
+                        O selo verde considera apenas os três campos que a cuidadora
+                        preencheu <strong>para este morador</strong> (higiene, alimentação
+                        e medicação). O relato geral é texto livre sobre a casa: ele é
+                        varrido por palavras-chave só para chamar atenção — a varredura
+                        erra para os dois lados e não substitui a leitura.
                       </p>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px', marginLeft: '32px' }}>
-                        Data do registro: {new Date(report.date).toLocaleString('pt-BR')}
-                      </p>
+                    </CardBody>
+                  </Card>
+
+                  <Card>
+                    <CardHeader
+                      icon={BookOpen}
+                      title={`Leitura do mês — ${resident?.name}`}
+                      subtitle={`${daysToRead.length} dia(s) em ${formatMonthLabel(monthKey)}, em ordem cronológica`}
+                    />
+                    <CardBody>
+                      {daysToRead.length === 0 ? (
+                        <EmptyState
+                          icon={BookOpen}
+                          title="Nenhum dia com anotação escrita"
+                          description="As cuidadoras não deixaram observações em texto neste período. Veja o modo Resumo para os indicadores."
+                        />
+                      ) : (
+                        <div className="reading">
+                          {daysToRead.map((group) => (
+                            <div className="reading__day" key={group.day}>
+                              <div className="reading__daymark">
+                                <div className="reading__daynum">
+                                  {String(group.day).padStart(2, '0')}
+                                </div>
+                                <div className="reading__dayweek">
+                                  {formatWeekday(group.date, true)}
+                                </div>
+                                <div className="reading__daycount">
+                                  {group.items.length === 1 ? '1 plantão' : `${group.items.length} plantões`}
+                                </div>
+                              </div>
+
+                              <div className="reading__entries">
+                                {group.items.map((entry, idx) => {
+                                  const h = classifyHygiene(entry.hygiene);
+                                  const f = classifyFood(entry.food);
+                                  const m = classifyMeds(entry.meds);
+
+                                  const desvios = [];
+                                  if (h !== 'realizada') desvios.push({ key: 'h', icon: Droplets, tone: h === 'recusou' ? 'danger' : 'warning', text: entry.hygiene });
+                                  if (f !== 'bem') desvios.push({ key: 'f', icon: Utensils, tone: f === 'recusou' ? 'danger' : 'warning', text: entry.food });
+                                  if (m !== 'tomou' && m !== 'sem_medicacao') desvios.push({ key: 'm', icon: Pill, tone: 'danger', text: entry.meds });
+
+                                  // O selo acima fala SÓ dos três campos deste morador.
+                                  // O relato geral é texto livre sobre a casa e é varrido
+                                  // à parte — verde só quando ambos estão limpos.
+                                  const geral = scanGeneralNotes(entry.generalNotes);
+                                  const geralLimpo = geral.status === 'rotina' || geral.status === 'vazio';
+
+                                  const attention =
+                                    desvios.some((d) => d.tone === 'danger') || geral.status === 'atencao';
+
+                                  return (
+                                    <article
+                                      className="reading__entry"
+                                      key={`${entry.reportId}-${idx}`}
+                                      data-written={entry.notes ? 'true' : 'false'}
+                                      data-attention={attention ? 'true' : 'false'}
+                                    >
+                                      <div className="reading__byline">
+                                        <Avatar name={entry.author} size="sm" />
+                                        <span className="reading__author">{entry.author}</span>
+                                        <Badge tone="neutral">{shiftLabel(entry.date)}</Badge>
+                                        <span className="reading__time">
+                                          assinado às {formatTime(entry.date)}
+                                        </span>
+                                      </div>
+
+                                      <div className="reading__chips">
+                                        {desvios.length === 0 ? (
+                                          <Badge
+                                            tone={geralLimpo ? 'success' : 'neutral'}
+                                            icon={geralLimpo ? CheckCircle2 : undefined}
+                                          >
+                                            {firstName(resident?.name)}: sem alteração na rotina
+                                          </Badge>
+                                        ) : (
+                                          desvios.map((d) => (
+                                            <Badge key={d.key} tone={d.tone} icon={d.icon}>
+                                              {d.text}
+                                            </Badge>
+                                          ))
+                                        )}
+
+                                        {geral.status === 'atencao' && (
+                                          <Badge tone="warning" icon={AlertTriangle}>
+                                            Relato geral: possível {geral.categorias.join(' / ').toLowerCase()}
+                                          </Badge>
+                                        )}
+                                        {geral.status === 'conteudo' && (
+                                          <Badge tone="info" icon={Eye}>
+                                            Relato geral com conteúdo
+                                          </Badge>
+                                        )}
+                                      </div>
+
+                                      {entry.notes ? (
+                                        <p className="reading__note">{entry.notes}</p>
+                                      ) : (
+                                        <p className="reading__note reading__note--empty">
+                                          Sem observação específica sobre {resident?.name?.split(' ')[0]} neste plantão.
+                                        </p>
+                                      )}
+
+                                      {showGeneral && entry.generalNotes && (
+                                        <div
+                                          className={`reading__general ${geral.status === 'atencao' ? 'reading__general--flagged' : ''}`}
+                                        >
+                                          <div className="reading__general-label">
+                                            Relato geral do plantão
+                                          </div>
+                                          <div className="reading__general-text">
+                                            {entry.generalNotes}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </article>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardBody>
+                  </Card>
+                </>
+              )}
+
+              {/* ---------- Parecer da supervisão (análise interna) ---------- */}
+              {monthView !== 'ficha' && (
+              <Card className="print-avoid-break">
+                <CardHeader
+                  title="Parecer da supervisão"
+                  subtitle={
+                    storedNarrative
+                      ? `Última atualização por ${storedNarrative.author_name} em ${formatDateTime(storedNarrative.updated_at)}`
+                      : 'Ainda não redigido para este mês'
+                  }
+                  actions={
+                    <div className="print-hide u-row u-gap-2">
+                      <Button
+                        variant="secondary" size="sm" icon={Sparkles}
+                        onClick={() => setNarrative(suggestion)}
+                      >
+                        Gerar rascunho
+                      </Button>
+                      {narrativeTable && (
+                        <Button
+                          variant="primary" size="sm" icon={Save}
+                          onClick={saveNarrative} loading={savingNarrative}
+                        >
+                          Salvar
+                        </Button>
+                      )}
+                    </div>
+                  }
+                />
+                <CardBody>
+                  {!narrativeTable && (
+                    <div style={{ marginBottom: 'var(--space-4)' }} className="print-hide">
+                      <Alert tone="warning" title="Parecer ainda não pode ser arquivado">
+                        A tabela <code>MonthlyReport</code> não existe no banco. O texto abaixo
+                        pode ser gerado e impresso, mas se perde ao sair da tela. Rode a
+                        migração <code>supabase/migrations/001_monthly_report.sql</code> para
+                        habilitar o arquivamento.
+                      </Alert>
+                    </div>
+                  )}
+
+                  <div className="print-hide">
+                    <TextareaField
+                      label="Análise do período"
+                      hint='Use "Gerar rascunho" para partir dos números já apurados e depois ajuste com sua leitura clínica.'
+                      rows={9}
+                      placeholder="Descreva a evolução do morador no período…"
+                      value={narrative}
+                      onChange={(e) => setNarrative(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Versão impressa do parecer */}
+                  <div className="print-only" style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                    {narrative || 'Parecer não redigido.'}
+                  </div>
+                </CardBody>
+              </Card>
+              )}
+
+              {monthView !== 'ficha' && (
+                <>
+                  <div className="print-signature">
+                    <div className="print-signature__line" />
+                    <div className="print-signature__caption">
+                      {currentUser?.name || 'Supervisão'} — Supervisão técnica
                     </div>
                   </div>
-                ))
-              )}
 
-              {/* Rodapé de Impressão */}
-              {reportsOfDay.length > 0 && (
-                <div className="print-only" style={{ display: 'none', marginTop: '40px', paddingTop: '16px', borderTop: '1px solid var(--border)', fontSize: '0.9rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                  Gerado por: {currentUser?.name || 'Administrador'} - Data da impressão: {new Date().toLocaleString('pt-BR')}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'mensal' && (
-            <div className="card" style={{ padding: '40px', background: 'white', border: '1px solid var(--border)' }}>
-              {/* O conteúdo do relatório mensal permanece inalterado */}
-              <div className="print-hide" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid var(--border)', paddingBottom: '24px', marginBottom: '24px' }}>
-                <div style={{ flex: 1, textAlign: 'center' }}>
-                  <h1 style={{ color: 'var(--primary-dark)', marginBottom: '8px' }}>Relatório Mensal de Evolução</h1>
-                  <p style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>Aurean Residência Terapêutica - Porto Feliz/SP</p>
-                </div>
-                {isEditing ? (
-                  <button className="btn btn-primary" onClick={() => setIsEditing(false)}>
-                    <Save size={20} /> Salvar e Finalizar
-                  </button>
-                ) : (
-                  <button className="btn" style={{ border: '1px solid var(--border)' }} onClick={() => setIsEditing(true)}>
-                    <Edit3 size={20} /> Editar
-                  </button>
-                )}
-              </div>
-              
-              <div className="print-only" style={{ display: 'none', textAlign: 'center', borderBottom: '2px solid var(--border)', paddingBottom: '24px', marginBottom: '24px' }}>
-                  <h1 style={{ color: 'var(--primary-dark)', marginBottom: '8px' }}>Relatório Mensal de Evolução</h1>
-                  <p style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>Aurean Residência Terapêutica - Porto Feliz/SP</p>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '32px' }}>
-                <div>
-                  <p><strong>Paciente:</strong> {selectedResident || 'Não selecionado'}</p>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <p><strong>Mês Referência:</strong> Maio/2026</p>
-                </div>
-              </div>
-
-              <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '16px', color: 'var(--primary)' }}>Resumo da Enfermagem (Sinais Vitais)</h3>
-              {isEditing ? (
-                <textarea 
-                  className="textarea-huge" 
-                  style={{ minHeight: '120px', marginBottom: '24px' }}
-                  placeholder="Escreva o resumo da saúde do paciente durante o mês..."
-                  value={reportData.enfermagem}
-                  onChange={(e) => setReportData({...reportData, enfermagem: e.target.value})}
-                />
-              ) : (
-                <p style={{ lineHeight: '1.6', marginBottom: '24px', color: 'var(--text-main)', whiteSpace: 'pre-wrap' }}>
-                  {reportData.enfermagem || 'Nenhuma anotação de enfermagem.'}
-                </p>
-              )}
-
-              <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '16px', color: 'var(--primary)' }}>Observações das Cuidadoras</h3>
-              {isEditing ? (
-                <textarea 
-                  className="textarea-huge" 
-                  style={{ minHeight: '120px', marginBottom: '24px' }}
-                  placeholder="Resuma o comportamento, sono e alimentação baseados nos plantões..."
-                  value={reportData.cuidadoras}
-                  onChange={(e) => setReportData({...reportData, cuidadoras: e.target.value})}
-                />
-              ) : (
-                <p style={{ lineHeight: '1.6', marginBottom: '24px', color: 'var(--text-main)', whiteSpace: 'pre-wrap' }}>
-                  {reportData.cuidadoras || 'Nenhuma observação inserida.'}
-                </p>
-              )}
-
-              <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '16px', color: 'var(--danger)' }}>Incidentes & Medicações</h3>
-              {isEditing ? (
-                <textarea 
-                  className="textarea-huge" 
-                  style={{ minHeight: '120px', marginBottom: '24px' }}
-                  placeholder="Anote se houve recusas de medicação, quedas ou incidentes..."
-                  value={reportData.incidentes}
-                  onChange={(e) => setReportData({...reportData, incidentes: e.target.value})}
-                />
-              ) : (
-                <p style={{ lineHeight: '1.6', color: 'var(--text-main)', whiteSpace: 'pre-wrap' }}>
-                  {reportData.incidentes || 'Nenhum incidente relatado.'}
-                </p>
-              )}
-
-              {!isEditing && (
-                <div style={{ marginTop: '80px', textAlign: 'center' }}>
-                  <div style={{ width: '300px', borderBottom: '1px solid var(--text-main)', margin: '0 auto 8px' }}></div>
-                  <p style={{ color: 'var(--text-muted)' }}>Assinatura do Supervisor(a)</p>
-                </div>
+                  <div className="print-doc-footer">
+                    Emitido por {currentUser?.name || 'Administração'} em {formatDateTime(new Date())}
+                    {' · '}Aurean Residência Terapêutica
+                  </div>
+                </>
               )}
             </div>
           )}
         </div>
-      </div>
+      )}
+
+      {/* ================= VISÃO DIÁRIA ================= */}
+      {tab === 'diario' && (
+        <div>
+          <Card className="print-hide" style={{ marginBottom: 'var(--space-6)' }}>
+            <CardBody>
+              <div className="u-between u-gap-4 u-wrap">
+                <div style={{ minWidth: 220, flex: 1 }}>
+                  <label className="field__label" htmlFor="day-filter">Data do plantão</label>
+                  <input
+                    id="day-filter"
+                    type="date"
+                    className="input"
+                    value={dayFilter}
+                    onChange={(e) => setDayFilter(e.target.value)}
+                  />
+                </div>
+                <Button variant="ghost" icon={RefreshCw} onClick={load}>Atualizar</Button>
+              </div>
+            </CardBody>
+          </Card>
+
+          <div className="print-doc-header">
+            <img src="/logo.png" alt="" className="print-doc-header__logo" />
+            <div className="print-doc-header__title">Relatório Diário de Passagem de Plantão</div>
+            <div className="print-doc-header__subtitle">
+              {formatDate(dayFilter)} · Aurean Residência Terapêutica
+            </div>
+          </div>
+
+          {reportsOfDay.length === 0 ? (
+            <Card>
+              <EmptyState
+                icon={CalendarDays}
+                title="Nenhum plantão registrado nesta data"
+                description={`Não há passagens de plantão arquivadas em ${formatDate(dayFilter)}.`}
+              />
+            </Card>
+          ) : (
+            <div className="u-stack u-gap-4">
+              {reportsOfDay.map((report) => (
+                <Card key={report.id} className="print-avoid-break">
+                  <CardHeader
+                    actions={
+                      <Button
+                        variant="danger-ghost" size="sm" iconOnly icon={Trash2}
+                        className="print-hide"
+                        onClick={() => deleteReport(report)}
+                        aria-label="Apagar registro"
+                      />
+                    }
+                  >
+                    <div className="u-row u-gap-3">
+                      <Avatar name={report.caregiver_name} />
+                      <div>
+                        <div className="card__title">{report.caregiver_name}</div>
+                        <div className="card__subtitle">{formatDateTime(report.date)}</div>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardBody>
+                    {report.general_notes && (
+                      <div style={{ marginBottom: 'var(--space-5)' }}>
+                        <p className="divider-label" style={{ marginBottom: 'var(--space-2)' }}>
+                          Relato geral do plantão
+                        </p>
+                        <Alert tone="warning">{report.general_notes}</Alert>
+                      </div>
+                    )}
+
+                    <p className="divider-label" style={{ marginBottom: 'var(--space-3)' }}>
+                      Por morador
+                    </p>
+
+                    <div className="u-stack u-gap-3">
+                      {residents.map((res) => {
+                        const data = report.reports?.[res.id];
+                        if (!data) return null;
+                        return (
+                          <div
+                            key={res.id}
+                            style={{
+                              padding: 'var(--space-4)',
+                              background: 'var(--surface-sunken)',
+                              borderRadius: 'var(--radius-md)',
+                              border: '1px solid var(--border-subtle)',
+                            }}
+                          >
+                            <strong style={{ color: 'var(--text-strong)' }}>{res.name}</strong>
+                            <div className="u-row u-wrap u-gap-2" style={{ marginTop: 'var(--space-2)' }}>
+                              <Badge
+                                tone={classifyHygiene(data.hygiene) === 'recusou' ? 'danger' : 'neutral'}
+                                icon={Droplets}
+                              >
+                                {data.hygiene}
+                              </Badge>
+                              <Badge
+                                tone={classifyFood(data.food) === 'recusou' ? 'danger' : 'neutral'}
+                                icon={Utensils}
+                              >
+                                {data.food}
+                              </Badge>
+                              <Badge
+                                tone={classifyMeds(data.meds) === 'recusou' ? 'danger' : 'neutral'}
+                                icon={Pill}
+                              >
+                                {data.meds}
+                              </Badge>
+                            </div>
+                            {data.notes && (
+                              <p
+                                style={{
+                                  marginTop: 'var(--space-3)',
+                                  fontSize: 'var(--text-sm)',
+                                  color: 'var(--text-muted)',
+                                }}
+                              >
+                                {data.notes}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div
+                      className="u-row u-gap-2"
+                      style={{
+                        marginTop: 'var(--space-5)',
+                        paddingTop: 'var(--space-4)',
+                        borderTop: '1px dashed var(--border)',
+                        fontSize: 'var(--text-sm)',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      <CheckCircle2 size={15} color="var(--success)" aria-hidden="true" />
+                      Assinado eletronicamente por <strong>{report.caregiver_name}</strong>
+                    </div>
+                  </CardBody>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          <div className="print-doc-footer">
+            Emitido por {currentUser?.name || 'Administração'} em {formatDateTime(new Date())}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

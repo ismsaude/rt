@@ -1,163 +1,220 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, Users, Plus } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarDays, Pencil, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { formatDate, MESES } from '../../lib/format';
+import {
+  Alert, Avatar, Badge, Button, Card, CardBody, EmptyState, Modal,
+  PageHeader, SelectField, SkeletonList, Stat, StatGrid, Table, TextField,
+  useToast,
+} from '../ui';
+
+const REGIMES = [
+  'A definir', '12x36 diurno', '12x36 noturno',
+  '8h diárias', '30h semanais', 'Folguista',
+];
+
+const ROLE_LABEL = {
+  ADMIN: 'Supervisão',
+  DIRETOR: 'Diretoria',
+  ENFERMEIRO: 'Téc. enfermagem',
+  CUIDADOR: 'Cuidador(a)',
+};
+
+/** Configuração de escala ainda não tem tabela própria no banco. */
+function readLocalSchedule() {
+  try {
+    return JSON.parse(localStorage.getItem('rt_schedule') || '{}');
+  } catch {
+    return {};
+  }
+}
 
 export default function ScheduleManagement() {
-  const [schedule, setSchedule] = useState([]);
-  const [teamSize, setTeamSize] = useState(0);
+  const toast = useToast();
 
-  useEffect(() => {
-    const fetchTeam = async () => {
-      const { data } = await supabase.from('User').select('*');
-      if (data) {
-        setTeamSize(data.length);
-        
-        // Carrega configurações de escala salvas localmente
-        const localConfig = JSON.parse(localStorage.getItem('rt_schedule') || '{}');
+  const [team, setTeam] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({ type: 'A definir', nextShift: '' });
 
-        setSchedule(data.map(u => ({
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('User').select('*').order('name');
+
+    if (error) {
+      toast.error('Não foi possível carregar a equipe.');
+      setTeam([]);
+    } else {
+      const config = readLocalSchedule();
+      setTeam(
+        (data || []).map((u) => ({
           id: u.id,
-          name: `${u.name} (${u.role.toUpperCase()})`,
-          type: localConfig[u.id]?.type || 'A Definir',
-          nextShift: localConfig[u.id]?.nextShift || 'A Definir',
-          status: u.active ? 'Ativo' : 'Inativo'
-        })));
-      }
-    };
-    fetchTeam();
-  }, []);
+          name: u.name,
+          role: u.role,
+          active: u.active !== false,
+          type: config[u.id]?.type || 'A definir',
+          nextShift: config[u.id]?.nextShift || '',
+        }))
+      );
+    }
+    setLoading(false);
+  }, [toast]);
 
-  const [editingUser, setEditingUser] = useState(null);
-  const [showAddModal, setShowAddModal] = useState(false);
+  useEffect(() => { load(); }, [load]);
 
-  const [editForm, setEditForm] = useState({ type: 'A Definir', nextShift: '' });
+  const activeCount = useMemo(() => team.filter((u) => u.active).length, [team]);
+  const scheduledCount = useMemo(
+    () => team.filter((u) => u.type !== 'A definir').length,
+    [team]
+  );
 
-  const handleEditClick = (user) => {
-    setEditForm({ type: user.type, nextShift: user.nextShift === 'A Definir' ? '' : user.nextShift });
-    setEditingUser(user);
+  const now = new Date();
+  const currentMonth = `${MESES[now.getMonth()]} de ${now.getFullYear()}`;
+
+  const openEdit = (member) => {
+    setForm({ type: member.type, nextShift: member.nextShift });
+    setEditing(member);
   };
 
-  const saveEdit = () => {
-    const updatedSchedule = schedule.map(u => {
-      if (u.id === editingUser.id) {
-        return { ...u, type: editForm.type, nextShift: editForm.nextShift || 'A Definir' };
-      }
-      return u;
-    });
-    setSchedule(updatedSchedule);
+  const save = (e) => {
+    e?.preventDefault();
 
-    const localConfig = JSON.parse(localStorage.getItem('rt_schedule') || '{}');
-    localConfig[editingUser.id] = { type: editForm.type, nextShift: editForm.nextShift || 'A Definir' };
-    localStorage.setItem('rt_schedule', JSON.stringify(localConfig));
+    try {
+      const config = readLocalSchedule();
+      config[editing.id] = { type: form.type, nextShift: form.nextShift };
+      localStorage.setItem('rt_schedule', JSON.stringify(config));
+    } catch {
+      toast.error('Não foi possível salvar a escala neste dispositivo.');
+      return;
+    }
 
-    setEditingUser(null);
+    setTeam((prev) =>
+      prev.map((u) => (u.id === editing.id ? { ...u, type: form.type, nextShift: form.nextShift } : u))
+    );
+    setEditing(null);
+    toast.success('Escala atualizada neste dispositivo.');
   };
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h2 style={{ marginBottom: '4px' }}>Gestão de Escalas</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Visualize e aloque funcionários para plantões.</p>
-        </div>
-        <button className="btn btn-primary" style={{ padding: '8px 16px' }} onClick={() => setShowAddModal(true)}>
-          <Plus size={18} />
-          Adicionar Plantão Avulso
-        </button>
+      <PageHeader
+        title="Gestão de escalas"
+        description="Regime de trabalho e próximo plantão de cada membro da equipe."
+      />
+
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <Alert tone="warning" title="Escala salva apenas neste dispositivo">
+          A configuração de regime e próximo plantão ainda não possui tabela no banco:
+          ela fica guardada neste navegador e não é vista pelos outros usuários.
+          A migração para o servidor está prevista na etapa de fundação de dados.
+        </Alert>
       </div>
 
-      {showAddModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="card" style={{ width: '90%', maxWidth: '400px', padding: '32px' }}>
-            <h3 style={{ fontSize: '1.4rem', marginBottom: '16px', color: 'var(--primary-dark)' }}>Adicionar Plantão Avulso</h3>
-            
-            <label className="input-label">Funcionário</label>
-            <select className="textarea-huge" style={{ minHeight: '50px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }}>
-              {schedule.map(u => <option key={u.id}>{u.name}</option>)}
-            </select>
-
-            <label className="input-label">Data</label>
-            <input type="date" className="textarea-huge" style={{ minHeight: '50px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} />
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button className="btn" style={{ flex: 1, border: '1px solid var(--border)' }} onClick={() => setShowAddModal(false)}>Cancelar</button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { alert('Plantão avulso adicionado com sucesso!'); setShowAddModal(false); }}>Adicionar</button>
-            </div>
-          </div>
-        </div>
+      {!loading && (
+        <StatGrid style={{ marginBottom: 'var(--space-6)' }}>
+          <Stat label="Mês de referência" value={currentMonth} icon={CalendarDays} />
+          <Stat label="Equipe ativa" value={activeCount} hint={`de ${team.length} cadastrados`} icon={Users} />
+          <Stat
+            label="Com escala definida" value={scheduledCount}
+            tone={scheduledCount < activeCount ? 'warning' : 'success'}
+            hint={scheduledCount < activeCount ? `${activeCount - scheduledCount} pendente(s)` : 'Todos definidos'}
+          />
+        </StatGrid>
       )}
 
-      {editingUser && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="card" style={{ width: '90%', maxWidth: '400px', padding: '32px' }}>
-            <h3 style={{ fontSize: '1.4rem', marginBottom: '16px', color: 'var(--primary-dark)' }}>Definir Escala</h3>
-            <p style={{ marginBottom: '16px', fontWeight: 'bold' }}>{editingUser.name}</p>
-            
-            <label className="input-label">Regime de Trabalho</label>
-            <select 
-              className="textarea-huge" 
-              style={{ minHeight: '50px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }}
-              value={editForm.type}
-              onChange={e => setEditForm({...editForm, type: e.target.value})}
-            >
-              <option>A Definir</option>
-              <option>12x36 Diurno</option>
-              <option>12x36 Noturno</option>
-              <option>8h Diárias</option>
-              <option>30h Semanais</option>
-              <option>Folguista</option>
-            </select>
-
-            <label className="input-label">Próximo Plantão</label>
-            <input 
-              type="date" 
-              className="textarea-huge" 
-              style={{ minHeight: '50px', padding: '12px', fontSize: '1rem', marginBottom: '16px' }} 
-              value={editForm.nextShift}
-              onChange={e => setEditForm({...editForm, nextShift: e.target.value})}
-            />
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button className="btn" style={{ flex: 1, border: '1px solid var(--border)' }} onClick={() => setEditingUser(null)}>Cancelar</button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={saveEdit}>Salvar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-        <div className="card" style={{ flex: '1 1 150px', borderLeft: '4px solid var(--primary)', padding: '16px' }}>
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem', marginBottom: '8px' }}><Calendar size={18} color="var(--primary)" /> Mês Atual</h3>
-          <p style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>Maio 2026</p>
-        </div>
-        <div className="card" style={{ flex: '1 1 150px', borderLeft: '4px solid var(--secondary)', padding: '16px' }}>
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem', marginBottom: '8px' }}><Users size={18} color="var(--secondary)" /> Equipe Ativa</h3>
-          <p style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>{teamSize} Func.</p>
-        </div>
-      </div>
-
-      <table className="desktop-table">
-        <thead>
-          <tr>
-            <th>Funcionário</th>
-            <th>Regime</th>
-            <th>Próximo Plantão</th>
-            <th>Status</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {schedule.map(row => (
-            <tr key={row.id}>
-              <td style={{ fontWeight: '600' }}>{row.name}</td>
-              <td><span style={{ background: 'var(--primary-light)', color: 'var(--primary-dark)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.9rem' }}>{row.type}</span></td>
-              <td>{row.nextShift}</td>
-              <td style={{ color: 'var(--secondary)', fontWeight: 'bold' }}>{row.status}</td>
-              <td><button className="btn" style={{ background: 'transparent', border: '1px solid var(--border)', padding: '6px 12px' }} onClick={() => handleEditClick(row)}>Editar</button></td>
+      {loading ? (
+        <SkeletonList count={4} />
+      ) : team.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={Users}
+            title="Nenhum funcionário cadastrado"
+            description="Cadastre a equipe em Gestão de Acessos para montar a escala."
+          />
+        </Card>
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <th>Funcionário</th>
+              <th>Regime</th>
+              <th>Próximo plantão</th>
+              <th>Situação</th>
+              <th style={{ textAlign: 'right' }}>Ações</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {team.map((member) => (
+              <tr key={member.id}>
+                <td>
+                  <div className="u-row u-gap-3">
+                    <Avatar name={member.name} size="sm" />
+                    <div style={{ minWidth: 0 }}>
+                      <div className="table__cell-strong">{member.name}</div>
+                      <div className="table__cell-muted" style={{ fontSize: 'var(--text-xs)' }}>
+                        {ROLE_LABEL[member.role] || member.role}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <Badge tone={member.type === 'A definir' ? 'neutral' : 'primary'}>
+                    {member.type}
+                  </Badge>
+                </td>
+                <td className="table__cell-muted">
+                  {member.nextShift ? formatDate(member.nextShift) : '—'}
+                </td>
+                <td>
+                  <Badge tone={member.active ? 'success' : 'neutral'} dot>
+                    {member.active ? 'Ativo' : 'Inativo'}
+                  </Badge>
+                </td>
+                <td>
+                  <div className="table__actions">
+                    <Button
+                      variant="secondary" size="sm" icon={Pencil}
+                      onClick={() => openEdit(member)}
+                    >
+                      Definir
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+
+      <Modal
+        open={!!editing}
+        onClose={() => setEditing(null)}
+        title="Definir escala"
+        description={editing?.name}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditing(null)}>Cancelar</Button>
+            <Button variant="primary" onClick={save}>Salvar</Button>
+          </>
+        }
+      >
+        <form onSubmit={save} className="u-stack u-gap-4">
+          <SelectField
+            label="Regime de trabalho"
+            value={form.type}
+            onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+          >
+            {REGIMES.map((r) => <option key={r} value={r}>{r}</option>)}
+          </SelectField>
+
+          <TextField
+            label="Próximo plantão" type="date"
+            value={form.nextShift}
+            onChange={(e) => setForm((f) => ({ ...f, nextShift: e.target.value }))}
+          />
+        </form>
+      </Modal>
     </div>
   );
 }

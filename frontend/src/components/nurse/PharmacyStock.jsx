@@ -1,217 +1,309 @@
-import React, { useState, useEffect } from 'react';
-import { Package, AlertTriangle, CheckCircle2, Plus, Paperclip } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  AlertTriangle, CheckCircle2, Package, Paperclip, Plus,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import {
+  Badge, Button, Card, CardBody, EmptyState, Field, Modal, PageHeader,
+  SelectField, SkeletonList, TextField, useToast,
+} from '../ui';
+
+const EMPTY_FORM = {
+  name: '', dosage: '', qty: '', minQty: '10',
+  origin: 'Farmácia', residentId: '', times: '', recipe: null,
+};
+
+function stockStatus(qty, minQty) {
+  if (qty <= 0) return 'critical';
+  if (qty <= minQty) return 'low';
+  return 'ok';
+}
+
+const STATUS_META = {
+  ok:       { tone: 'success', label: 'Em dia',  icon: CheckCircle2, accent: 'success' },
+  low:      { tone: 'warning', label: 'Repor',   icon: AlertTriangle, accent: 'warning' },
+  critical: { tone: 'danger',  label: 'Urgente', icon: AlertTriangle, accent: 'danger' },
+};
 
 export default function PharmacyStock() {
+  const toast = useToast();
+
   const [stock, setStock] = useState([]);
   const [residents, setResidents] = useState([]);
-  const [showAddModal, setShowAddModal] = useState(false);
-  
-  // Form states
-  const [medName, setMedName] = useState('');
-  const [medDosage, setMedDosage] = useState('');
-  const [medQty, setMedQty] = useState('');
-  const [medMinQty, setMedMinQty] = useState('');
-  const [medOrigin, setMedOrigin] = useState('Farmácia');
-  const [medResident, setMedResident] = useState('');
-  const [medTimes, setMedTimes] = useState('');
-  const [medRecipe, setMedRecipe] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
 
-  useEffect(() => {
-    fetchStock();
-    fetchResidents();
-  }, []);
+  const load = useCallback(async () => {
+    setLoading(true);
 
-  const fetchStock = async () => {
-    const { data } = await supabase.from('Medication').select('*');
-    if (data && data.length > 0) {
-      // Mescla com prescrições locais para ter horários e morador (caso o backend não tenha sido atualizado)
-      const localPrescriptions = JSON.parse(localStorage.getItem('rt_prescriptions') || '{}');
-      setStock(data.map(m => ({
-        id: m.id,
-        name: `${m.name} ${m.dosage}`,
-        qty: m.stock,
-        minQty: m.minStock,
-        status: m.stock > m.minStock ? 'ok' : m.stock > 0 ? 'low' : 'critical',
-        origin: localPrescriptions[m.id]?.origin || 'Não informado',
-        resident: localPrescriptions[m.id]?.residentName || 'Geral',
-        times: localPrescriptions[m.id]?.times || []
-      })));
-    } else {
-      const localStock = JSON.parse(localStorage.getItem('rt_stock') || '[]');
-      setStock(localStock);
+    const [{ data: meds, error: medError }, { data: res }] = await Promise.all([
+      supabase.from('Medication').select('*'),
+      supabase.from('Resident').select('id, name').order('name'),
+    ]);
+
+    if (medError) toast.error('Não foi possível carregar o estoque.');
+    setResidents(res || []);
+
+    let prescriptions = {};
+    try {
+      prescriptions = JSON.parse(localStorage.getItem('rt_prescriptions') || '{}');
+    } catch {
+      prescriptions = {};
     }
-  };
 
-  const fetchResidents = async () => {
-    const { data } = await supabase.from('Resident').select('id, name');
-    if (data) setResidents(data);
-  };
+    if (meds?.length) {
+      setStock(
+        meds.map((m) => ({
+          id: m.id,
+          name: [m.name, m.dosage].filter(Boolean).join(' '),
+          qty: m.stock ?? 0,
+          minQty: m.minStock ?? 0,
+          origin: prescriptions[m.id]?.origin || m.origin || 'Não informado',
+          resident: prescriptions[m.id]?.residentName || 'Geral',
+          times: prescriptions[m.id]?.times || [],
+        }))
+      );
+    } else {
+      try {
+        setStock(JSON.parse(localStorage.getItem('rt_stock') || '[]'));
+      } catch {
+        setStock([]);
+      }
+    }
 
-  const handleAddMed = async () => {
-    if (!medName || !medQty || !medResident || !medTimes || !medRecipe) {
-      alert("Preencha todos os campos obrigatórios, incluindo o anexo da receita.");
+    setLoading(false);
+  }, [toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+
+    if (!form.name.trim() || !form.qty || !form.residentId || !form.times.trim()) {
+      toast.warning('Preencha nome, quantidade, morador e horários.');
       return;
     }
 
-    const newMed = {
-      id: Date.now().toString(),
-      name: medName,
-      dosage: medDosage,
-      stock: parseInt(medQty),
-      minStock: parseInt(medMinQty || 10),
-    };
+    setSaving(true);
+    const qty = parseInt(form.qty, 10);
+    const minQty = parseInt(form.minQty || '10', 10);
 
-    // Tenta salvar no Supabase
-    await supabase.from('Medication').insert([{
-      name: medName,
-      dosage: medDosage,
-      stock: parseInt(medQty),
-      minStock: parseInt(medMinQty || 10)
-    }]);
+    const { data, error } = await supabase
+      .from('Medication')
+      .insert([{ name: form.name.trim(), dosage: form.dosage.trim(), stock: qty, minStock: minQty }])
+      .select();
 
-    // Salva os dados extras (prescrição) no local storage como fallback/extensão
-    const localPrescriptions = JSON.parse(localStorage.getItem('rt_prescriptions') || '{}');
-    const selectedRes = residents.find(r => r.id === medResident) || { name: 'Geral' };
-    
-    localPrescriptions[newMed.id] = {
-      origin: medOrigin,
-      residentId: medResident,
-      residentName: selectedRes.name,
-      times: medTimes.split(',').map(t => t.trim()),
-      recipeAttached: true
-    };
-    localStorage.setItem('rt_prescriptions', JSON.stringify(localPrescriptions));
+    setSaving(false);
 
-    const localStock = JSON.parse(localStorage.getItem('rt_stock') || '[]');
-    localStock.push({
-      id: newMed.id,
-      name: `${newMed.name} ${newMed.dosage}`,
-      qty: newMed.stock,
-      minQty: newMed.minStock,
-      status: newMed.stock > newMed.minStock ? 'ok' : newMed.stock > 0 ? 'low' : 'critical',
-      origin: medOrigin,
-      resident: selectedRes.name,
-      times: localPrescriptions[newMed.id].times
-    });
-    localStorage.setItem('rt_stock', JSON.stringify(localStock));
+    if (error) {
+      toast.error(`Erro ao cadastrar: ${error.message}`);
+      return;
+    }
 
-    setStock(localStock);
-    setShowAddModal(false);
-    
-    // Reseta form
-    setMedName(''); setMedDosage(''); setMedQty(''); setMedMinQty(''); setMedOrigin('Farmácia'); setMedResident(''); setMedTimes(''); setMedRecipe(null);
+    // Horários e vínculo com o morador ainda não têm coluna própria
+    // no banco; ficam no navegador até a migração da prescrição.
+    const createdId = data?.[0]?.id || Date.now().toString();
+    const resident = residents.find((r) => r.id === form.residentId);
+    const times = form.times.split(',').map((t) => t.trim()).filter(Boolean);
+
+    try {
+      const prescriptions = JSON.parse(localStorage.getItem('rt_prescriptions') || '{}');
+      prescriptions[createdId] = {
+        origin: form.origin,
+        residentId: form.residentId,
+        residentName: resident?.name || 'Geral',
+        times,
+        recipeAttached: !!form.recipe,
+      };
+      localStorage.setItem('rt_prescriptions', JSON.stringify(prescriptions));
+
+      const localStock = JSON.parse(localStorage.getItem('rt_stock') || '[]');
+      localStock.push({
+        id: createdId,
+        name: [form.name.trim(), form.dosage.trim()].filter(Boolean).join(' '),
+        qty, minQty,
+        origin: form.origin,
+        resident: resident?.name || 'Geral',
+        times,
+      });
+      localStorage.setItem('rt_stock', JSON.stringify(localStock));
+    } catch {
+      toast.warning('O medicamento foi salvo, mas os horários não puderam ser guardados neste dispositivo.');
+    }
+
+    setForm(EMPTY_FORM);
+    setFormOpen(false);
+    toast.success('Medicamento cadastrado.');
+    load();
   };
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h2 style={{ marginBottom: '4px' }}>Estoque & Prescrições</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-            Gerencie medicações e receitas.
-          </p>
-        </div>
-        <button className="btn btn-primary" style={{ padding: '8px 16px' }} onClick={() => setShowAddModal(true)}>
-          <Plus size={18} />
-          Cadastrar Remédio
-        </button>
-      </div>
+      <PageHeader
+        title="Estoque e prescrições"
+        description="Medicamentos da casa, horários e níveis de reposição."
+        actions={
+          <Button variant="primary" icon={Plus} onClick={() => setFormOpen(true)}>
+            Cadastrar medicamento
+          </Button>
+        }
+      />
 
-      {stock.map(item => (
-        <div 
-          key={item.id} 
-          className="card" 
-          style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            borderLeft: item.status === 'ok' ? '6px solid var(--secondary)' : item.status === 'low' ? '6px solid var(--warning)' : '6px solid var(--danger)'
-          }}
-        >
-          <div>
-            <h3 style={{ fontSize: '1.3rem', marginBottom: '4px' }}>{item.name}</h3>
-            <p style={{ fontSize: '1rem', color: 'var(--text-main)', fontWeight: 'bold' }}>Morador: {item.resident}</p>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-              Mínimo: {item.minQty} un. | Origem: {item.origin} | Horários: {item.times?.join(', ')}
-            </p>
-          </div>
-          
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: item.status === 'critical' ? 'var(--danger)' : 'var(--text-main)' }}>
-              {item.qty} un.
-            </div>
-            {item.status === 'ok' && <span style={{ color: 'var(--secondary)', fontSize: '0.9rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}><CheckCircle2 size={16}/> Em dia</span>}
-            {item.status === 'low' && <span style={{ color: 'var(--warning)', fontSize: '0.9rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}><AlertTriangle size={16}/> Atenção</span>}
-            {item.status === 'critical' && <span style={{ color: 'var(--danger)', fontSize: '0.9rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}><AlertTriangle size={16}/> Urgente</span>}
-          </div>
-        </div>
-      ))}
+      {loading ? (
+        <SkeletonList count={3} />
+      ) : stock.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={Package}
+            title="Estoque vazio"
+            description="Cadastre os medicamentos em uso pelos moradores para acompanhar o consumo."
+            action={
+              <Button variant="primary" icon={Plus} onClick={() => setFormOpen(true)}>
+                Cadastrar medicamento
+              </Button>
+            }
+          />
+        </Card>
+      ) : (
+        <div className="list">
+          {stock.map((item) => {
+            const status = stockStatus(item.qty, item.minQty);
+            const meta = STATUS_META[status];
+            return (
+              <Card key={item.id} accent={meta.accent}>
+                <CardBody tight>
+                  <div className="u-between u-gap-4 u-wrap">
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>
+                        {item.name}
+                      </h3>
+                      <div className="u-row u-wrap u-gap-2" style={{ marginBottom: 'var(--space-2)' }}>
+                        <Badge tone="primary">{item.resident}</Badge>
+                        <Badge tone="neutral">{item.origin}</Badge>
+                      </div>
+                      <p className="u-subtle" style={{ fontSize: 'var(--text-xs)' }}>
+                        {item.times?.length
+                          ? `Horários: ${item.times.join(' · ')}`
+                          : 'Sem horários definidos'}
+                        {' · '}
+                        Mínimo: {item.minQty} un.
+                      </p>
+                    </div>
 
-      {showAddModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, overflowY: 'auto' }}>
-          <div className="card" style={{ width: '90%', maxWidth: '500px', padding: '32px', margin: '40px 0' }}>
-            <h3 style={{ fontSize: '1.4rem', marginBottom: '16px', color: 'var(--primary-dark)' }}>Cadastrar Novo Medicamento</h3>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label className="input-label">Nome do Remédio *</label>
-                <input type="text" className="textarea-huge" style={{ minHeight: '40px', padding: '8px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={medName} onChange={e => setMedName(e.target.value)} />
-              </div>
-              <div>
-                <label className="input-label">Dosagem (Ex: 50mg)</label>
-                <input type="text" className="textarea-huge" style={{ minHeight: '40px', padding: '8px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={medDosage} onChange={e => setMedDosage(e.target.value)} />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
-              <div>
-                <label className="input-label">Qtd Atual (un) *</label>
-                <input type="number" className="textarea-huge" style={{ minHeight: '40px', padding: '8px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={medQty} onChange={e => setMedQty(e.target.value)} />
-              </div>
-              <div>
-                <label className="input-label">Estoque Mínimo *</label>
-                <input type="number" className="textarea-huge" style={{ minHeight: '40px', padding: '8px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={medMinQty} onChange={e => setMedMinQty(e.target.value)} />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
-              <div>
-                <label className="input-label">Origem *</label>
-                <select className="textarea-huge" style={{ minHeight: '40px', padding: '8px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={medOrigin} onChange={e => setMedOrigin(e.target.value)}>
-                  <option>Farmácia</option>
-                  <option>SUS</option>
-                </select>
-              </div>
-              <div>
-                <label className="input-label">Morador *</label>
-                <select className="textarea-huge" style={{ minHeight: '40px', padding: '8px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={medResident} onChange={e => setMedResident(e.target.value)}>
-                  <option value="">Selecione...</option>
-                  {residents.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div style={{ marginTop: '12px' }}>
-              <label className="input-label">Horários (Separados por vírgula. Ex: 08:00, 20:00) *</label>
-              <input type="text" className="textarea-huge" style={{ minHeight: '40px', padding: '8px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }} value={medTimes} onChange={e => setMedTimes(e.target.value)} />
-            </div>
-
-            <div style={{ marginTop: '20px', padding: '16px', border: '1px dashed var(--primary)', borderRadius: '8px', textAlign: 'center', background: 'var(--primary-light)' }}>
-              <label className="input-label" style={{ marginBottom: '8px', display: 'block' }}>Anexar Receita Médica *</label>
-              <input type="file" id="recipe-upload" style={{ display: 'none' }} onChange={(e) => setMedRecipe(e.target.files[0])} accept="image/*,.pdf" />
-              <label htmlFor="recipe-upload" className="btn" style={{ background: 'white', color: 'var(--primary)', border: '1px solid var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <Paperclip size={18} /> {medRecipe ? medRecipe.name : 'Escolher Arquivo PDF/Imagem'}
-              </label>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button className="btn" style={{ flex: 1, border: '1px solid var(--border)' }} onClick={() => setShowAddModal(false)}>Cancelar</button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleAddMed}>Salvar Medicamento</button>
-            </div>
-          </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 'var(--text-2xl)',
+                          fontWeight: 'var(--weight-semibold)',
+                          color: status === 'ok' ? 'var(--text-strong)' : `var(--${status === 'low' ? 'warning' : 'danger'})`,
+                          lineHeight: 1.1,
+                        }}
+                      >
+                        {item.qty}
+                      </div>
+                      <div className="u-subtle" style={{ fontSize: 'var(--text-xs)', marginBottom: 'var(--space-2)' }}>
+                        unidades
+                      </div>
+                      <Badge tone={meta.tone} icon={meta.icon}>{meta.label}</Badge>
+                    </div>
+                  </div>
+                </CardBody>
+              </Card>
+            );
+          })}
         </div>
       )}
+
+      <Modal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title="Cadastrar medicamento"
+        description="Vincule o medicamento ao morador e informe os horários de administração."
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setFormOpen(false)}>Cancelar</Button>
+            <Button variant="primary" onClick={submit} loading={saving}>Salvar</Button>
+          </>
+        }
+      >
+        <form onSubmit={submit} className="u-stack u-gap-4">
+          <div className="field-row">
+            <TextField
+              label="Nome do medicamento" required autoFocus
+              placeholder="Ex.: Risperidona"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            />
+            <TextField
+              label="Dosagem"
+              placeholder="Ex.: 2mg"
+              value={form.dosage}
+              onChange={(e) => setForm((f) => ({ ...f, dosage: e.target.value }))}
+            />
+          </div>
+
+          <div className="field-row">
+            <TextField
+              label="Quantidade atual" type="number" min="0" required
+              value={form.qty}
+              onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))}
+            />
+            <TextField
+              label="Estoque mínimo" type="number" min="0" required
+              hint="Dispara o alerta de reposição"
+              value={form.minQty}
+              onChange={(e) => setForm((f) => ({ ...f, minQty: e.target.value }))}
+            />
+          </div>
+
+          <div className="field-row">
+            <SelectField
+              label="Origem"
+              value={form.origin}
+              onChange={(e) => setForm((f) => ({ ...f, origin: e.target.value }))}
+            >
+              <option>Farmácia</option>
+              <option>SUS</option>
+            </SelectField>
+
+            <SelectField
+              label="Morador" required
+              value={form.residentId}
+              onChange={(e) => setForm((f) => ({ ...f, residentId: e.target.value }))}
+            >
+              <option value="">Selecione…</option>
+              {residents.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </SelectField>
+          </div>
+
+          <TextField
+            label="Horários de administração" required
+            hint="Separe por vírgula. Ex.: 08:00, 14:00, 20:00"
+            placeholder="08:00, 20:00"
+            value={form.times}
+            onChange={(e) => setForm((f) => ({ ...f, times: e.target.value }))}
+          />
+
+          <Field label="Receita médica" hint="Imagem ou PDF da prescrição.">
+            <label
+              className="btn btn--secondary btn--md"
+              style={{ cursor: 'pointer', width: '100%' }}
+            >
+              <Paperclip size={17} aria-hidden="true" />
+              {form.recipe ? form.recipe.name : 'Escolher arquivo'}
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                style={{ display: 'none' }}
+                onChange={(e) => setForm((f) => ({ ...f, recipe: e.target.files?.[0] || null }))}
+              />
+            </label>
+          </Field>
+        </form>
+      </Modal>
     </div>
   );
 }
