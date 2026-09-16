@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Calendar as CalendarIcon, Clock, MapPin, Plus, Trash2, User,
+  Calendar as CalendarIcon, CheckCircle2, Clock, MapPin, Pencil, Plus,
+  Trash2, User,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { uid } from '../../lib/id';
-import { EVENT_TYPES, SOCIAL_EVENT_TYPES } from '../../lib/clinical';
+import { SOCIAL_EVENT_TYPES } from '../../lib/clinical';
 import { formatDate, formatWeekday, toISODate, toDate } from '../../lib/format';
 import {
-  Badge, Button, Card, CardBody, EmptyState, Modal, PageHeader,
-  SelectField, SkeletonList, TextareaField, TextField, useConfirm, useToast,
+  Badge, Button, Card, CardBody, EmptyState, PageHeader, SkeletonList,
+  useConfirm, useToast,
 } from '../ui';
+import EventFormModal from '../EventFormModal';
 
-const EMPTY = { title: '', type: EVENT_TYPES[0], residentId: '', date: '', time: '', location: '', notes: '' };
 
 export default function Programmation({ role }) {
   const toast = useToast();
@@ -21,8 +21,7 @@ export default function Programmation({ role }) {
   const [residents, setResidents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState(EMPTY);
+  const [editing, setEditing] = useState(null);
 
   const canEdit = role === 'admin' || role === 'enfermeiro';
 
@@ -52,37 +51,14 @@ export default function Programmation({ role }) {
     };
   }, [events]);
 
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!form.title.trim() || !form.date || !form.time) {
-      toast.warning('Informe título, data e hora.');
-      return;
-    }
+  const abrirNovo = () => {
+    setEditing(null);
+    setFormOpen(true);
+  };
 
-    setSaving(true);
-    const resident = residents.find((r) => r.id === form.residentId);
-
-    const { error } = await supabase.from('Event').insert([{
-      id: uid(),
-      title: form.title.trim(),
-      type: form.type,
-      resident_id: form.residentId || null,
-      resident_name: resident?.name || 'Geral (todos)',
-      date: form.date,
-      time: form.time,
-      location: form.location.trim(),
-      notes: form.notes.trim(),
-    }]);
-    setSaving(false);
-
-    if (error) {
-      toast.error(`Erro ao agendar: ${error.message}`);
-      return;
-    }
-    setForm(EMPTY);
-    setFormOpen(false);
-    toast.success('Compromisso agendado.');
-    load();
+  const abrirEdicao = (event) => {
+    setEditing(event);
+    setFormOpen(true);
   };
 
   const remove = async (event) => {
@@ -121,7 +97,8 @@ export default function Programmation({ role }) {
                     {event.type}
                   </Badge>
                 )}
-                {isToday && <Badge tone="warning">Hoje</Badge>}
+                {isToday && !event.done && <Badge tone="warning">Hoje</Badge>}
+                {event.done && <Badge tone="success" icon={CheckCircle2}>Realizado</Badge>}
               </div>
 
               <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>
@@ -142,8 +119,8 @@ export default function Programmation({ role }) {
                 )}
               </div>
 
-              {event.notes && (
-                <p
+              {(event.notes || event.outcome) && (
+                <div
                   style={{
                     marginTop: 'var(--space-3)',
                     paddingTop: 'var(--space-3)',
@@ -152,17 +129,29 @@ export default function Programmation({ role }) {
                     color: 'var(--text-muted)',
                   }}
                 >
-                  {event.notes}
-                </p>
+                  {event.notes && <p>{event.notes}</p>}
+                  {event.outcome && (
+                    <p style={{ marginTop: event.notes ? 'var(--space-2)' : 0 }}>
+                      <strong>Desfecho:</strong> {event.outcome}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
             {canEdit && (
-              <Button
-                variant="danger-ghost" size="sm" iconOnly icon={Trash2}
-                onClick={() => remove(event)}
-                aria-label={`Excluir ${event.title}`}
-              />
+              <div className="u-row u-gap-1" style={{ flexShrink: 0 }}>
+                <Button
+                  variant="ghost" size="sm" iconOnly icon={Pencil}
+                  onClick={() => abrirEdicao(event)}
+                  aria-label={`Editar ${event.title}`}
+                />
+                <Button
+                  variant="danger-ghost" size="sm" iconOnly icon={Trash2}
+                  onClick={() => remove(event)}
+                  aria-label={`Excluir ${event.title}`}
+                />
+              </div>
             )}
           </div>
         </CardBody>
@@ -177,7 +166,7 @@ export default function Programmation({ role }) {
         description="Consultas, exames e compromissos dos moradores."
         actions={
           canEdit && (
-            <Button variant="primary" icon={Plus} onClick={() => setFormOpen(true)}>
+            <Button variant="primary" icon={Plus} onClick={abrirNovo}>
               Novo compromisso
             </Button>
           )
@@ -194,7 +183,7 @@ export default function Programmation({ role }) {
             description="Consultas, exames e saídas aparecem aqui para toda a equipe."
             action={
               canEdit && (
-                <Button variant="primary" icon={Plus} onClick={() => setFormOpen(true)}>
+                <Button variant="primary" icon={Plus} onClick={abrirNovo}>
                   Agendar compromisso
                 </Button>
               )
@@ -225,72 +214,13 @@ export default function Programmation({ role }) {
         </div>
       )}
 
-      <Modal
+      <EventFormModal
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        title="Novo compromisso"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setFormOpen(false)}>Cancelar</Button>
-            <Button variant="primary" onClick={submit} loading={saving}>Agendar</Button>
-          </>
-        }
-      >
-        <form onSubmit={submit} className="u-stack u-gap-4">
-          <TextField
-            label="Título" required autoFocus
-            placeholder="Ex.: Consulta com Dr. João — psiquiatria"
-            value={form.title}
-            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-          />
-
-          <SelectField
-            label="Tipo de compromisso" required
-            hint="Define em qual seção da ficha mensal o compromisso aparece."
-            value={form.type}
-            onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
-          >
-            {EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </SelectField>
-
-          <SelectField
-            label="Morador"
-            value={form.residentId}
-            onChange={(e) => setForm((f) => ({ ...f, residentId: e.target.value }))}
-          >
-            <option value="">Geral (toda a casa)</option>
-            {residents.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-          </SelectField>
-
-          <div className="field-row">
-            <TextField
-              label="Data" type="date" required
-              value={form.date}
-              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-            />
-            <TextField
-              label="Hora" type="time" required
-              value={form.time}
-              onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
-            />
-          </div>
-
-          <TextField
-            label="Local"
-            placeholder="Ex.: UBS Central — sala 3"
-            value={form.location}
-            onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-          />
-
-          <TextareaField
-            label="Observações"
-            placeholder="Ex.: comparecer em jejum, levar cartão SUS…"
-            rows={3}
-            value={form.notes}
-            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-          />
-        </form>
-      </Modal>
+        onSaved={load}
+        event={editing}
+        residents={residents}
+      />
     </div>
   );
 }

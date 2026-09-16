@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  CalendarClock, CheckCircle2, Circle, ListChecks, MapPin, Plus, Trash2, User,
+  CalendarClock, CheckCircle2, Circle, ListChecks, MapPin, Pencil, Plus,
+  Trash2, User,
 } from 'lucide-react';
 import { formatDateTime, isSoon, relativeDayLabel, toDate, toISODate } from '../lib/format';
 import { SOCIAL_EVENT_TYPES } from '../lib/clinical';
@@ -9,6 +10,7 @@ import {
   Badge, Button, Card, CardBody, CardHeader, EmptyState, Modal, PageHeader,
   SkeletonList, TextField, useConfirm, useToast,
 } from './ui';
+import EventFormModal from './EventFormModal';
 
 /** Por horário previsto; sem horário vai para o fim da lista. */
 function sortTasks(list) {
@@ -26,6 +28,8 @@ export default function Dashboard({ role, currentUser }) {
 
   const [tasks, setTasks] = useState([]);
   const [events, setEvents] = useState([]);
+  const [residents, setResidents] = useState([]);
+  const [eventForm, setEventForm] = useState({ open: false, event: null });
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -41,13 +45,14 @@ export default function Dashboard({ role, currentUser }) {
     const limite = new Date();
     limite.setDate(limite.getDate() + 7);
 
-    const [{ data, error }, { data: evs }] = await Promise.all([
+    const [{ data, error }, { data: evs }, { data: res }] = await Promise.all([
       supabase.from('Task').select('*'),
       supabase
         .from('Event')
         .select('*')
         .gte('date', hoje)
         .lte('date', toISODate(limite)),
+      supabase.from('Resident').select('id, name').order('name'),
     ]);
 
     if (error) {
@@ -62,6 +67,7 @@ export default function Dashboard({ role, currentUser }) {
         `${a.date}T${a.time || '00:00'}`.localeCompare(`${b.date}T${b.time || '00:00'}`)
       )
     );
+    setResidents(res || []);
     setLoading(false);
   }, [toast]);
 
@@ -103,6 +109,23 @@ export default function Dashboard({ role, currentUser }) {
       setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
       toast.error('Não foi possível salvar. Verifique a conexão.');
     }
+  };
+
+  const removeEvent = async (event) => {
+    const ok = await confirm({
+      title: 'Excluir compromisso',
+      message: `"${event.title}" de ${event.resident_name} será removido da agenda.`,
+      confirmLabel: 'Excluir',
+    });
+    if (!ok) return;
+
+    const { error } = await supabase.from('Event').delete().eq('id', event.id);
+    if (error) {
+      toast.error('Erro ao excluir o compromisso.');
+      return;
+    }
+    setEvents((prev) => prev.filter((e) => e.id !== event.id));
+    toast.success('Compromisso excluído.');
   };
 
   const removeTask = async (task) => {
@@ -155,6 +178,16 @@ export default function Dashboard({ role, currentUser }) {
                 ? '1 agendamento nos próximos 7 dias'
                 : `${events.length} agendamentos nos próximos 7 dias`
             }
+            actions={
+              isManager && (
+                <Button
+                  variant="secondary" size="sm" icon={Plus}
+                  onClick={() => setEventForm({ open: true, event: null })}
+                >
+                  Agendar
+                </Button>
+              )
+            }
           />
           <CardBody tight>
             <div className="agenda">
@@ -162,7 +195,11 @@ export default function Dashboard({ role, currentUser }) {
                 const d = toDate(ev.date);
                 const soon = isSoon(ev.date);
                 return (
-                  <div className="agenda__item" key={ev.id}>
+                  <div
+                    className="agenda__item"
+                    key={ev.id}
+                    data-actions={isManager ? 'true' : 'false'}
+                  >
                     <div className={`agenda__when ${soon ? 'agenda__when--soon' : ''}`}>
                       <div className="agenda__day">
                         {String(d.getDate()).padStart(2, '0')}
@@ -192,6 +229,21 @@ export default function Dashboard({ role, currentUser }) {
                       </div>
                       {ev.notes && <div className="agenda__note">{ev.notes}</div>}
                     </div>
+
+                    {isManager && (
+                      <div className="u-row u-gap-1" style={{ flexShrink: 0 }}>
+                        <Button
+                          variant="ghost" size="sm" iconOnly icon={Pencil}
+                          onClick={() => setEventForm({ open: true, event: ev })}
+                          aria-label={`Editar ${ev.title}`}
+                        />
+                        <Button
+                          variant="danger-ghost" size="sm" iconOnly icon={Trash2}
+                          onClick={() => removeEvent(ev)}
+                          aria-label={`Excluir ${ev.title}`}
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -277,6 +329,14 @@ export default function Dashboard({ role, currentUser }) {
           ))}
         </div>
       )}
+
+      <EventFormModal
+        open={eventForm.open}
+        onClose={() => setEventForm({ open: false, event: null })}
+        onSaved={load}
+        event={eventForm.event}
+        residents={residents}
+      />
 
       <Modal
         open={formOpen}

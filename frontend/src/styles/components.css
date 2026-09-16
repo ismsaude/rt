@@ -1022,6 +1022,11 @@ body:has(.bottom-nav) { --toast-offset: var(--bottomnav-height); }
 .agenda__item {
   display: grid;
   grid-template-columns: 52px 1fr;
+}
+
+/* Com permissão de edição abre uma terceira coluna para as ações */
+.agenda__item[data-actions='true'] {
+  grid-template-columns: 52px 1fr auto;
   gap: var(--space-3);
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--border-subtle);
