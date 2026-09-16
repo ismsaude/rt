@@ -9,9 +9,11 @@ import { NURSING_PROCEDURES, NURSING_SHIFTS } from '../../lib/clinical';
 import { saveIncidents } from '../../lib/incidents';
 import { buildNursingDraft, loadDayRecords } from '../../lib/nursingDraft';
 import IncidentsSection from '../IncidentsSection';
+import SignatureModal from '../SignatureModal';
 import {
   Alert, Avatar, Badge, Button, Card, CardBody, CardHeader, ChipGroup,
-  EmptyState, PageHeader, SelectField, SkeletonList, TextareaField, useToast,
+  EmptyState, PageHeader, SelectField, Signature, SkeletonList, TextareaField,
+  useToast,
 } from '../ui';
 
 /** Turno provável a partir da hora, para poupar um toque. */
@@ -37,6 +39,7 @@ export default function NursingReport({ currentUser }) {
   const [residentNotes, setResidentNotes] = useState({});
   const [incidents, setIncidents] = useState([]);
   const [drafting, setDrafting] = useState(false);
+  const [signOpen, setSignOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,14 +91,15 @@ export default function NursingReport({ currentUser }) {
     (r) => toISODate(r.date) === toISODate(new Date()) && r.shift === shift
   );
 
-  const submit = async (e) => {
-    e?.preventDefault();
-
+  const abrirAssinatura = () => {
     if (!content.trim()) {
       toast.warning('Escreva a evolução de enfermagem antes de enviar.');
       return;
     }
+    setSignOpen(true);
+  };
 
+  const submit = async (assinatura) => {
     setSaving(true);
 
     // Guarda só as observações realmente preenchidas.
@@ -105,7 +109,7 @@ export default function NursingReport({ currentUser }) {
         .filter(([, txt]) => txt)
     );
 
-    const agora = new Date().toISOString();
+    const agora = assinatura.signed_at;
 
     const { data: saved, error } = await supabase.from('NursingReport').insert([{
       id: uid(),
@@ -115,7 +119,8 @@ export default function NursingReport({ currentUser }) {
       procedures,
       resident_notes: notes,
       author_id: currentUser?.id || null,
-      author_name: currentUser?.name || 'Enfermagem',
+      author_name: assinatura.signed_by_name,
+      ...assinatura,
     }]).select();
 
     if (error) {
@@ -132,7 +137,7 @@ export default function NursingReport({ currentUser }) {
     // relatório e a cada morador envolvido.
     const { error: incError } = await saveIncidents(incidents, {
       residents,
-      author: { id: currentUser?.id, name: currentUser?.name || 'Enfermagem' },
+      author: { id: currentUser?.id, name: assinatura.signed_by_name },
       occurredAt: agora,
       sourceId: saved?.[0]?.id || null,
     });
@@ -147,6 +152,7 @@ export default function NursingReport({ currentUser }) {
       return;
     }
 
+    setSignOpen(false);
     setSent(true);
     setContent('');
     setProcedures([]);
@@ -277,8 +283,8 @@ export default function NursingReport({ currentUser }) {
           residents={residents}
         />
 
-        <Button variant="primary" size="xl" block icon={Send} onClick={submit} loading={saving}>
-          Enviar relatório
+        <Button variant="primary" size="xl" block icon={Send} onClick={abrirAssinatura} loading={saving}>
+          Assinar e enviar relatório
           {incidents.length > 0 &&
             ` e ${incidents.length === 1 ? '1 intercorrência' : `${incidents.length} intercorrências`}`}
         </Button>
@@ -323,6 +329,12 @@ export default function NursingReport({ currentUser }) {
 
                     <p style={{ color: 'var(--text)', whiteSpace: 'pre-wrap' }}>{r.content}</p>
 
+                    {r.signed_by_name && (
+                      <div style={{ marginTop: 'var(--space-3)' }}>
+                        <Signature assinatura={r} compact />
+                      </div>
+                    )}
+
                     {Array.isArray(r.procedures) && r.procedures.length > 0 && (
                       <div className="u-row u-wrap u-gap-1" style={{ marginTop: 'var(--space-3)' }}>
                         {r.procedures.map((p) => (
@@ -354,6 +366,23 @@ export default function NursingReport({ currentUser }) {
           </div>
         )}
       </section>
+
+      <SignatureModal
+        open={signOpen}
+        onClose={() => setSignOpen(false)}
+        onSigned={submit}
+        currentUser={currentUser}
+        description="Confirme sua identidade para arquivar a evolução de enfermagem."
+      >
+        {incidents.length > 0 && (
+          <Alert tone="warning">
+            Serão registradas também{' '}
+            <strong>
+              {incidents.length === 1 ? '1 intercorrência' : `${incidents.length} intercorrências`}
+            </strong>.
+          </Alert>
+        )}
+      </SignatureModal>
     </div>
   );
 }

@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, CheckCircle2, ChevronDown, ClipboardEdit, History,
-  PenLine, Send, ShieldCheck, User,
+  AlertTriangle, CheckCircle2, ChevronDown, ClipboardEdit, History, Send, User,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatDateTime } from '../lib/format';
 import {
   Alert, Avatar, Badge, Button, Card, CardBody, CardHeader, ChipGroup,
-  EmptyState, Modal, PageHeader, SelectField, SkeletonList, TextareaField,
-  TextField, useToast,
+  EmptyState, PageHeader, SelectField, Signature, SkeletonList, TextareaField,
+  useToast,
 } from './ui';
 import { BEHAVIOR_NONE, BEHAVIOR_OPTIONS, behaviorTone } from '../lib/clinical';
 import { saveIncidents } from '../lib/incidents';
 import IncidentsSection from './IncidentsSection';
+import SignatureModal from './SignatureModal';
 
 /* Os rótulos abaixo são gravados no prontuário. Alterá-los muda o
    histórico: o classificador em lib/shiftReports.js normaliza as
@@ -44,7 +44,6 @@ export default function ShiftHandover({ currentUser }) {
   const [incidents, setIncidents] = useState([]);
 
   const [signOpen, setSignOpen] = useState(false);
-  const [signPassword, setSignPassword] = useState('');
   const [signError, setSignError] = useState('');
 
   const resetEntries = useCallback((list) => {
@@ -100,43 +99,23 @@ export default function ShiftHandover({ currentUser }) {
       toast.warning('Descreva o relato geral do plantão antes de finalizar.');
       return;
     }
-    setSignPassword('');
     setSignError('');
     setSignOpen(true);
   };
 
-  const submit = async (e) => {
-    e?.preventDefault();
+  const submit = async (assinatura) => {
     setSignError('');
-
-    if (!signPassword) {
-      setSignError('Digite sua senha para assinar.');
-      return;
-    }
-
     setSaving(true);
 
-    // Confere a senha do próprio usuário como assinatura do registro.
-    const { data: match } = await supabase
-      .from('User').select('id')
-      .eq('email', currentUser?.email || 'dev@aurean.com')
-      .eq('password', signPassword)
-      .maybeSingle();
-
-    if (!match && currentUser?.email !== 'dev@aurean.com') {
-      setSignError('Senha incorreta.');
-      setSaving(false);
-      return;
-    }
-
-    const now = new Date().toISOString();
+    const now = assinatura.signed_at;
 
     const { data: saved, error } = await supabase.from('ShiftReport').insert([{
       reports: entries,
       general_notes: generalNotes.trim(),
       date: now,
       caregiver_id: currentUser?.id || 'dev-id',
-      caregiver_name: currentUser?.name || 'Desenvolvedor',
+      caregiver_name: assinatura.signed_by_name,
+      ...assinatura,
     }]).select();
 
     if (error) {
@@ -145,13 +124,10 @@ export default function ShiftHandover({ currentUser }) {
       return;
     }
 
-    // As intercorrências viram registros próprios, ligados a este
-    // plantão e a cada morador envolvido — é o que permite que o
-    // episódio apareça no prontuário de todos eles.
     if (incidents.length > 0) {
       const { error: incError } = await saveIncidents(incidents, {
         residents,
-        author: { id: currentUser?.id, name: currentUser?.name || 'Desenvolvedor' },
+        author: { id: currentUser?.id, name: assinatura.signed_by_name },
         occurredAt: now,
         sourceId: saved?.[0]?.id || null,
       });
@@ -327,7 +303,7 @@ export default function ShiftHandover({ currentUser }) {
             </CardBody>
           </Card>
 
-          <Button variant="primary" size="xl" block icon={Send} onClick={startSigning}>
+          <Button variant="primary" size="xl" block icon={Send} onClick={startSigning} loading={saving}>
             Assinar e finalizar plantão
           </Button>
         </div>
@@ -366,6 +342,12 @@ export default function ShiftHandover({ currentUser }) {
                     <p style={{ color: 'var(--text)', marginBottom: 'var(--space-3)' }}>
                       {report.general_notes}
                     </p>
+                  )}
+
+                  {report.signed_by_name && (
+                    <div style={{ marginBottom: 'var(--space-3)' }}>
+                      <Signature assinatura={report} compact />
+                    </div>
                   )}
 
                   <details>
@@ -423,48 +405,23 @@ export default function ShiftHandover({ currentUser }) {
         )}
       </section>
 
-      {/* --------------------- Assinatura eletrônica --------------------- */}
-      <Modal
+      <SignatureModal
         open={signOpen}
         onClose={() => setSignOpen(false)}
-        title="Assinatura eletrônica"
-        description="Confirme sua identidade para arquivar o relatório."
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setSignOpen(false)}>Cancelar</Button>
-            <Button variant="primary" icon={PenLine} onClick={submit} loading={saving}>
-              Assinar e enviar
-            </Button>
-          </>
-        }
+        onSigned={submit}
+        currentUser={currentUser}
+        description="Confirme sua identidade para arquivar o relatório do plantão."
       >
-        <form onSubmit={submit} className="u-stack u-gap-4">
-          <Alert tone="info" icon={ShieldCheck}>
-            O relatório será arquivado em nome de <strong>{currentUser?.name || 'você'}</strong> com
-            data e hora deste momento.
-            {incidents.length > 0 && (
-              <>
-                {' '}Serão registradas também{' '}
-                <strong>
-                  {incidents.length === 1
-                    ? '1 intercorrência'
-                    : `${incidents.length} intercorrências`}
-                </strong>.
-              </>
-            )}
+        {incidents.length > 0 && (
+          <Alert tone="warning">
+            Serão registradas também{' '}
+            <strong>
+              {incidents.length === 1 ? '1 intercorrência' : `${incidents.length} intercorrências`}
+            </strong>.
           </Alert>
-          <TextField
-            label="Sua senha de acesso"
-            type="password"
-            autoComplete="current-password"
-            autoFocus
-            value={signPassword}
-            onChange={(e) => setSignPassword(e.target.value)}
-            error={signError}
-          />
-        </form>
-      </Modal>
+        )}
+        {signError && <Alert tone="danger">{signError}</Alert>}
+      </SignatureModal>
     </div>
   );
 }

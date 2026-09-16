@@ -3,6 +3,8 @@
    A ordem importa: tokens → base → layout → componentes → print.
    ============================================================ */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+/* Caveat: grafia manuscrita legível, usada só na linha da assinatura. */
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600&display=swap');
 
 @import './styles/tokens.css';
 @import './styles/base.css';

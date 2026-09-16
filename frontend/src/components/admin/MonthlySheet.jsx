@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Printer, Save, Sparkles } from 'lucide-react';
+import { Copy, PenLine, Save, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import {
   calcAge, formatDate, formatDateTime, MESES, toDate, toISODate,
 } from '../../lib/format';
 import { CLINICAL_EVENT_TYPES, formatCouncil, SOCIAL_EVENT_TYPES } from '../../lib/clinical';
-import { Alert, Badge, Button, MonthPicker, useToast } from '../ui';
+import { Alert, Badge, Button, MonthPicker, Signature, useToast } from '../ui';
 import CloneSheetModal from './CloneSheetModal';
+import SignatureModal from '../SignatureModal';
 
 const AUTONOMY_LEVELS = ['Independente', 'Semi-dependente', 'Dependente'];
 
@@ -65,6 +66,8 @@ export default function MonthlySheet({
   const [saving, setSaving] = useState(false);
   const [schemaOk, setSchemaOk] = useState(true);
   const [cloneOpen, setCloneOpen] = useState(false);
+  const [signOpen, setSignOpen] = useState(false);
+  const [assinatura, setAssinatura] = useState(null);
 
   const [year, month] = monthKey.split('-').map(Number);
   const periodo = `${MESES[month - 1]} de ${year}`;
@@ -86,6 +89,7 @@ export default function MonthlySheet({
     }
     setSchemaOk(true);
     setRecord(data || null);
+    setAssinatura(data?.signed_by_name ? data : null);
     // Autonomia vem do cadastro do morador quando a ficha do mês
     // ainda não foi preenchida — evita redigitar um dado estável.
     setForm({
@@ -235,10 +239,11 @@ export default function MonthlySheet({
   };
 
   /* ---------------- Gravação ---------------- */
-  const save = async () => {
+  const save = async (assinaturaNova = null) => {
     setSaving(true);
     const payload = {
       ...form,
+      ...(assinaturaNova || {}),
       resident_id: resident.id,
       resident_name: resident.name,
       month: monthKey,
@@ -260,7 +265,15 @@ export default function MonthlySheet({
       toast.error(`Erro ao salvar a ficha: ${error.message}`);
       return;
     }
-    toast.success('Ficha mensal salva.');
+    if (assinaturaNova) {
+      setAssinatura(assinaturaNova);
+      setSignOpen(false);
+      toast.success('Ficha assinada e salva. Abrindo a impressão…');
+      // Aguarda o React pintar a assinatura antes de chamar a impressão.
+      setTimeout(() => window.print(), 600);
+    } else {
+      toast.success('Ficha mensal salva.');
+    }
     load();
   };
 
@@ -291,8 +304,12 @@ export default function MonthlySheet({
           <Button variant="secondary" icon={Save} onClick={save} loading={saving} disabled={!schemaOk}>
             Salvar ficha
           </Button>
-          <Button variant="primary" icon={Printer} onClick={() => window.print()}>
-            Gerar PDF
+          <Button
+            variant="primary" icon={PenLine}
+            onClick={() => setSignOpen(true)}
+            disabled={!schemaOk}
+          >
+            Gerar relatório assinado
           </Button>
         </div>
       </div>
@@ -486,16 +503,39 @@ export default function MonthlySheet({
         </section>
 
         <div className="sheet__signature">
-          <div className="sheet__signature-line" />
-          <div className="sheet__signature-name">{currentUser?.name || '—'}</div>
-          <div className="sheet__signature-role">
-            {currentUser?.job_title || 'Supervisora Residência Terapêutica'}
-          </div>
-          {formatCouncil(currentUser) && (
-            <div className="sheet__signature-role">{formatCouncil(currentUser)}</div>
+          {assinatura ? (
+            <Signature assinatura={assinatura} />
+          ) : (
+            <>
+              <div className="sheet__signature-line" />
+              <div className="sheet__signature-name">{currentUser?.name || '—'}</div>
+              <div className="sheet__signature-role">
+                {currentUser?.job_title || 'Supervisora Residência Terapêutica'}
+              </div>
+              {formatCouncil(currentUser) && (
+                <div className="sheet__signature-role">{formatCouncil(currentUser)}</div>
+              )}
+              <div className="sheet__signature-role print-hide" style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--text-subtle)' }}>
+                Ainda não assinada — use “Gerar relatório assinado”.
+              </div>
+            </>
           )}
         </div>
       </article>
+
+      <SignatureModal
+        open={signOpen}
+        onClose={() => setSignOpen(false)}
+        onSigned={(a) => save(a)}
+        currentUser={currentUser}
+        title="Assinar e emitir a ficha"
+        description={`Ficha de ${resident?.name} — ${periodo}.`}
+      >
+        <Alert tone="info">
+          Ao assinar, a ficha é salva e a janela de impressão abre em seguida.
+          Escolha <strong>Salvar como PDF</strong> no destino.
+        </Alert>
+      </SignatureModal>
 
       <CloneSheetModal
         open={cloneOpen}

@@ -172,7 +172,7 @@ export default function VitalsControl() {
               />
 
               <VitalField
-                label="Glicemia capilar" icon={Droplets} iconColor="var(--blue-500)"
+                label="Glicemia" icon={Droplets} iconColor="var(--blue-500)"
                 status={glucoseStatus} hint="Referência 70–140 mg/dL"
                 type="number" inputMode="numeric" placeholder="99"
                 value={vitals.glucose}

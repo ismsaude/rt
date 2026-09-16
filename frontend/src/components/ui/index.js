@@ -16,6 +16,7 @@ export { default as Badge } from './Badge';
 export { default as ChipGroup } from './ChipGroup';
 export { default as Alert } from './Alert';
 export { default as EmptyState } from './EmptyState';
+export { default as Signature } from './Signature';
 export { Skeleton, SkeletonText, SkeletonList } from './Skeleton';
 export { ToastProvider, useToast } from './Toast';
 export { ConfirmProvider, useConfirm } from './ConfirmDialog';

@@ -1102,3 +1102,64 @@ body:has(.bottom-nav) { --toast-offset: var(--bottomnav-height); }
   color: var(--warning-text);
   font-weight: var(--weight-medium);
 }
+
+/* ------------------------------------------------------------
+   ASSINATURA ELETRÔNICA
+
+   A grafia manuscrita serve à leitura humana do documento. O que
+   sustenta a assinatura numa auditoria é o carimbo abaixo dela:
+   instante, origem e a confirmação de que houve senha.
+   ------------------------------------------------------------ */
+.signature {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-1);
+  padding: var(--space-4) 0;
+}
+.signature--left { align-items: flex-start; text-align: left; }
+
+.signature__mark {
+  font-family: 'Caveat', 'Segoe Script', cursive;
+  font-size: 2.1rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--gray-900);
+  padding: 0 var(--space-4) var(--space-1);
+  border-bottom: 1px solid var(--gray-900);
+  min-width: 240px;
+  max-width: 100%;
+  word-break: break-word;
+}
+
+.signature__name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+  margin-top: var(--space-2);
+}
+.signature__role { font-size: var(--text-sm); color: var(--text-muted); }
+.signature__council { font-size: var(--text-sm); color: var(--text-muted); }
+
+.signature__stamp {
+  font-size: var(--text-2xs);
+  color: var(--text-subtle);
+  line-height: var(--leading-snug);
+  margin-top: var(--space-2);
+  max-width: 62ch;
+}
+
+/* Bloco compacto, para listas e históricos */
+.signature--inline { flex-direction: row; align-items: center; gap: var(--space-3); padding: 0; text-align: left; }
+.signature--inline .signature__mark {
+  font-size: 1.3rem;
+  border-bottom: none;
+  min-width: 0;
+  padding: 0;
+}
+
+@media print {
+  .signature__mark { color: #000; border-bottom-color: #000; }
+  .signature__stamp { color: #444; }
+}
