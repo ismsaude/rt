@@ -135,3 +135,11 @@ export function isSoon(value) {
   const dias = Math.round((alvo - hoje) / 86400000);
   return dias === 0 || dias === 1;
 }
+
+/** "a, b e c" — enumeração com conjunção, como se escreve em texto. */
+export function listarComE(itens) {
+  const lista = (itens || []).filter(Boolean);
+  if (lista.length === 0) return '';
+  if (lista.length === 1) return lista[0];
+  return `${lista.slice(0, -1).join(', ')} e ${lista[lista.length - 1]}`;
+}

@@ -227,7 +227,7 @@ export default function DataRegistration() {
                 <th>Morador</th>
                 <th>CPF</th>
                 <th>Nascimento</th>
-                <th>Alergias</th>
+                <th>Condições clínicas</th>
                 <th style={{ textAlign: 'right' }}>Ações</th>
               </tr>
             </thead>
@@ -379,9 +379,9 @@ export default function DataRegistration() {
               <option value="Feminino">Feminino</option>
             </SelectField>
             <TextField
-              label="Alergias"
-              hint="Aparece em destaque na passagem de plantão."
-              placeholder="Ex.: dipirona, frutos do mar"
+              label="Condições clínicas e alergias"
+              hint="Separe por vírgula. Alimenta o resumo da ficha mensal e aparece em destaque na passagem de plantão."
+              placeholder="Ex.: diabético, hipertensivo, alergia a dipirona"
               value={resident.allergies}
               onChange={(e) => setResident((r) => ({ ...r, allergies: e.target.value }))}
             />

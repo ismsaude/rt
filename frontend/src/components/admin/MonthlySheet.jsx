@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, PenLine, RotateCcw, Save, Sparkles } from 'lucide-react';
+import { buildObservacoes } from '../../lib/monthlyReport';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import {
@@ -14,6 +15,7 @@ const AUTONOMY_LEVELS = ['Independente', 'Semi-dependente', 'Dependente'];
 
 const EMPTY = {
   emitido_em: '',
+  observacoes: '',
   intervencoes: '',
   comportamento: '',
   adesao: '',
@@ -96,6 +98,9 @@ export default function MonthlySheet({
       // Data que sai no documento: a supervisão pode ajustar, já que
       // a ficha nem sempre é emitida no mesmo dia em que foi redigida.
       emitido_em: data?.emitido_em || toISODate(new Date()),
+      // O resumo clínico vem do cadastro quando a ficha ainda não o tem:
+      // é a mesma informação em todas as fichas daquele morador.
+      observacoes: data?.observacoes || buildObservacoes(resident),
       intervencoes: data?.intervencoes || '',
       comportamento: data?.comportamento || '',
       adesao: data?.adesao || '',
@@ -104,8 +109,7 @@ export default function MonthlySheet({
       autonomia_atividades: data?.autonomia_atividades || resident.autonomy_activities || '',
       interacoes: data?.interacoes || '',
     });
-  }, [resident?.id, resident?.autonomy_hygiene, resident?.autonomy_food,
-      resident?.autonomy_activities, monthKey]);
+  }, [resident, monthKey]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -410,6 +414,28 @@ export default function MonthlySheet({
             </div>
           </div>
         </div>
+
+        <section className="sheet__section">
+          <h2 className="sheet__section-title">
+            CONDIÇÕES CLÍNICAS E OBSERVAÇÕES
+            <Button
+              variant="ghost" size="sm" icon={RotateCcw}
+              className="print-hide"
+              style={{ marginLeft: 'var(--space-2)', verticalAlign: 'middle' }}
+              onClick={() => {
+                setForm((f) => ({ ...f, observacoes: buildObservacoes(resident) }));
+                toast.success('Resumo recarregado do cadastro do morador.');
+              }}
+            >
+              Usar o cadastro
+            </Button>
+          </h2>
+          <AutoTextarea
+            value={form.observacoes}
+            onChange={set('observacoes')}
+            placeholder="Ex.: Morador de 67 anos, diabético, hipertensivo e esquizofrênico."
+          />
+        </section>
 
         <section className="sheet__section">
           <h2 className="sheet__section-title">

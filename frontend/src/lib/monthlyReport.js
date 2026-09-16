@@ -13,9 +13,16 @@
 
 import { supabase } from './supabase';
 import { uid } from './id';
+import { calcAge, listarComE } from './format';
 
 /** Seções da ficha, com a indicação de quais são individuais. */
 export const SHEET_SECTIONS = [
+  {
+    key: 'observacoes',
+    label: 'Condições clínicas e observações',
+    hint: 'Descreve a pessoa: vem do cadastro de cada morador.',
+    individual: true,
+  },
   {
     key: 'intervencoes',
     label: 'Intervenções realizadas',
@@ -120,4 +127,38 @@ export async function cloneSheet({ origem, sections, destinos, monthKey, author 
   }
 
   return { ok, erros };
+}
+
+/**
+ * Resumo clínico do morador para a seção de observações.
+ *
+ * As condições são lidas do cadastro exatamente como foram escritas —
+ * já vêm flexionadas por morador ("Diabético" / "Diabética") — e só
+ * têm a inicial reduzida para caber na frase.
+ */
+export function buildObservacoes(resident) {
+  if (!resident) return '';
+
+  const feminino = String(resident.sex || '').toLowerCase().startsWith('f');
+  const tratamento = feminino ? 'Moradora' : 'Morador';
+
+  const idade = calcAge(resident.dateOfBirth);
+  const abertura = idade != null
+    ? `${tratamento} de ${idade} anos`
+    : tratamento;
+
+  const condicoes = String(resident.allergies || '')
+    .split(/[,;]/)
+    .map((c) => c.trim())
+    .filter(Boolean)
+    // Termos em caixa alta são siglas e permanecem; os demais ficam em
+    // minúsculas por inteiro, para não sobrar "prolapso Vaginal" no meio
+    // da frase.
+    .map((c) => (c === c.toUpperCase() && c.length <= 5 ? c : c.toLowerCase()));
+
+  if (condicoes.length === 0) {
+    return `${abertura}. Sem condições clínicas registradas no cadastro.`;
+  }
+
+  return `${abertura}, ${listarComE(condicoes)}.`;
 }
