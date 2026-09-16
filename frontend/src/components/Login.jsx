@@ -1,94 +1,136 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { Mail, Lock, Eye, EyeOff, LogIn } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { Lock, Mail } from 'lucide-react';
+import { Alert, Button, TextField } from './ui';
+
+const ROLE_MAP = {
+  CUIDADOR: 'cuidador',
+  ENFERMEIRO: 'enfermeiro',
+  ADMIN: 'admin',
+  DIRETOR: 'admin',
+};
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleLogin = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+    setLoading(true);
 
-    // Acesso Desenvolvedor (Master)
+    // ATENÇÃO: acesso mestre de desenvolvimento. Removê-lo faz parte
+    // da etapa de autenticação (Supabase Auth) ainda pendente.
     if (email === 'dev@aurean.com' && password === 'admin') {
-      onLogin('admin', { name: 'Desenvolvedor', role: 'ADMIN', email: 'dev@aurean.com' });
+      onLogin('admin', { name: 'Desenvolvedor', role: 'ADMIN', email });
       setLoading(false);
       return;
     }
 
     try {
-      const { data, error } = await supabase
+      const { data, error: dbError } = await supabase
         .from('User')
         .select('*')
-        .eq('email', email)
+        .eq('email', email.trim().toLowerCase())
         .eq('password', password)
-        .single();
+        .maybeSingle();
 
-      if (error || !data) {
+      if (dbError) {
+        setError('Não foi possível conectar ao servidor. Verifique a internet e tente novamente.');
+      } else if (!data) {
         setError('E-mail ou senha incorretos.');
+      } else if (data.active === false) {
+        setError('Este acesso está desativado. Procure a supervisão.');
       } else {
-        let userRole = 'admin';
-        if (data.role === 'CUIDADOR') userRole = 'cuidador';
-        else if (data.role === 'ENFERMEIRO') userRole = 'enfermeiro';
-        else if (data.role === 'ADMIN' || data.role === 'DIRETOR') userRole = 'admin';
-
-        onLogin(userRole, data);
+        onLogin(ROLE_MAP[data.role] || 'cuidador', data);
       }
-    } catch (err) {
-      setError('Erro ao fazer login.');
+    } catch {
+      setError('Erro inesperado ao entrar. Tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--background)' }}>
-      <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '40px', textAlign: 'center' }}>
-        <h1 style={{ fontSize: '1.8rem', color: 'var(--primary-dark)', marginBottom: '8px' }}>Bem-vindo</h1>
-        <p style={{ color: 'var(--text-muted)', marginBottom: '32px' }}>Aurean Residência Terapêutica</p>
+    <div className="login">
+      <div className="login__panel">
+        <div className="login__inner">
+          <img
+            src="/logo.png"
+            alt="Aurean Residência Terapêutica"
+            className="login__logo"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
 
-        {error && (
-          <div style={{ backgroundColor: 'var(--danger-light)', color: 'var(--danger)', padding: '12px', borderRadius: '8px', marginBottom: '20px' }}>
-            {error}
-          </div>
-        )}
+          <h1 className="login__title">Acessar o sistema</h1>
+          <p className="login__subtitle">
+            Entre com as credenciais fornecidas pela supervisão.
+          </p>
 
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ position: 'relative' }}>
-            <Mail size={20} style={{ position: 'absolute', left: '16px', top: '16px', color: 'var(--text-muted)' }} />
-            <input 
-              type="email" 
+          <form className="login__form" onSubmit={handleSubmit} noValidate>
+            {error && <Alert tone="danger">{error}</Alert>}
+
+            <TextField
+              label="E-mail"
+              type="email"
+              icon={Mail}
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck="false"
               required
-              className="textarea-huge" 
-              placeholder="Seu e-mail" 
-              style={{ minHeight: '50px', padding: '12px 12px 12px 48px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }}
+              placeholder="seu@email.com"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
             />
-          </div>
 
-          <div style={{ position: 'relative' }}>
-            <Lock size={20} style={{ position: 'absolute', left: '16px', top: '16px', color: 'var(--text-muted)' }} />
-            <input 
-              type="password" 
+            <TextField
+              label="Senha"
+              type={showPassword ? 'text' : 'password'}
+              icon={Lock}
+              autoComplete="current-password"
               required
-              className="textarea-huge" 
-              placeholder="Sua senha" 
-              style={{ minHeight: '50px', padding: '12px 12px 12px 48px', fontSize: '1rem', width: '100%', boxSizing: 'border-box' }}
+              placeholder="••••••••"
               value={password}
-              onChange={e => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value)}
+              action={
+                <button
+                  type="button"
+                  className="input-group__action"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              }
             />
-          </div>
 
-          <button type="submit" className="btn-massive btn-primary" disabled={loading} style={{ marginTop: '16px', width: '100%' }}>
-            {loading ? 'Entrando...' : 'Entrar no Sistema'}
-          </button>
-        </form>
+            <Button type="submit" variant="primary" size="lg" block loading={loading} icon={LogIn}>
+              {loading ? 'Entrando…' : 'Entrar'}
+            </Button>
+          </form>
+
+          <p className="login__footer">
+            Esqueceu a senha ou precisa de acesso?<br />
+            Procure a supervisão da residência.
+          </p>
+        </div>
       </div>
+
+      <aside className="login__aside">
+        <div className="login__aside-content">
+          <p className="login__aside-quote">
+            O cuidado de cada dia, registrado com o rigor que a casa merece.
+          </p>
+          <p className="login__aside-caption">
+            Plantões, medicação, sinais vitais e evolução dos moradores reunidos
+            em um só lugar — para que a equipe cuide das pessoas, e o sistema
+            cuide do registro.
+          </p>
+        </div>
+      </aside>
     </div>
   );
 }

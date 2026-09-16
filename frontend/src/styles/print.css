@@ -1,0 +1,96 @@
+/* ============================================================
+   AUREAN RT — Impressão
+   Relatórios impressos são documentos oficiais: precisam de
+   cabeçalho, rodapé, quebras controladas e tinta econômica.
+   ============================================================ */
+
+@page {
+  size: A4 portrait;
+  margin: 16mm 14mm 18mm;
+}
+
+@media print {
+  :root {
+    --canvas: #FFFFFF;
+    --surface: #FFFFFF;
+    --surface-sunken: #FFFFFF;
+    --shadow-xs: none; --shadow-sm: none; --shadow-md: none;
+    --shadow-lg: none; --shadow-xl: none;
+  }
+
+  body { background: #FFFFFF; font-size: 10.5pt; color: #000; }
+
+  /* Cromo da aplicação não vai para o papel */
+  .sidebar, .bottom-nav, .app__header, .shell__topbar,
+  .toast-region, .overlay, .sidebar__scrim,
+  .print-hide, .btn, .tabs, .segmented { display: none !important; }
+
+  .shell, .app { display: block; box-shadow: none; max-width: 100%; }
+  .shell__content, .app__main { padding: 0; max-width: 100%; }
+
+  .print-only { display: revert !important; }
+
+  .card {
+    border: 1px solid #CCC;
+    box-shadow: none;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-break-before { break-before: page; page-break-before: always; }
+  .print-avoid-break  { break-inside: avoid; page-break-inside: avoid; }
+
+  /* Cabeçalho oficial do documento */
+  .print-doc-header {
+    display: block !important;
+    text-align: center;
+    border-bottom: 2px solid #333;
+    padding-bottom: 8mm;
+    margin-bottom: 8mm;
+  }
+  .print-doc-header__logo { height: 42px; width: auto; margin: 0 auto 4mm; }
+  .print-doc-header__title { font-size: 15pt; font-weight: 700; color: #000; }
+  .print-doc-header__subtitle { font-size: 10pt; color: #444; margin-top: 2mm; }
+
+  .print-doc-footer {
+    display: block !important;
+    margin-top: 10mm;
+    padding-top: 4mm;
+    border-top: 1px solid #999;
+    font-size: 8.5pt;
+    color: #444;
+    text-align: center;
+  }
+
+  /* Campo de assinatura manuscrita */
+  .print-signature {
+    display: block !important;
+    margin-top: 18mm;
+    text-align: center;
+    break-inside: avoid;
+  }
+  .print-signature__line {
+    width: 70mm;
+    border-bottom: 1px solid #000;
+    margin: 0 auto 2mm;
+  }
+  .print-signature__caption { font-size: 9pt; color: #333; }
+
+  /* Garante que fundos coloridos de selo saiam no papel */
+  .badge, .alert, .meter__fill {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  a { color: #000; text-decoration: none; }
+  details { display: block !important; }
+  details > summary { display: none !important; }
+
+  h1, h2, h3, h4 { break-after: avoid; page-break-after: avoid; }
+  table { break-inside: auto; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }
+}
+
+/* Fora da impressão, esses blocos ficam escondidos */
+.print-only, .print-doc-header, .print-doc-footer, .print-signature { display: none; }

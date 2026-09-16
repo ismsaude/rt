@@ -1,0 +1,215 @@
+/* ============================================================
+   AUREAN RT — Design Tokens
+   Fonte da verdade para cor, espaçamento, tipografia e elevação.
+   Nenhum componente deve usar valor "cru": sempre var(--token).
+   ============================================================ */
+
+:root {
+  /* ---------- MARCA ----------
+     Teal extraído da logo oficial (#51A8B1). A rampa mantém o
+     matiz ~186deg. O tom da logo vive no passo 400; as ações
+     interativas usam 600/700 para atingir contraste AA. */
+  --teal-50:  #F0F9FA;
+  --teal-100: #DAEFF2;
+  --teal-200: #B4DFE5;
+  --teal-300: #86CBD4;
+  --teal-400: #51A8B1;  /* ← cor da logo */
+  --teal-500: #3D8F99;
+  --teal-600: #2E737E;  /* 5.4:1 em branco — AA para texto normal */
+  --teal-700: #265E68;
+  --teal-800: #224C54;
+  --teal-900: #1F4047;
+
+  /* ---------- NEUTROS ----------
+     Cinza levemente frio para casar com o teal sem esverdear. */
+  --gray-0:   #FFFFFF;
+  --gray-25:  #FCFDFD;
+  --gray-50:  #F7F9FA;
+  --gray-100: #EFF2F4;
+  --gray-200: #E4E9EC;
+  --gray-300: #CFD7DC;
+  --gray-400: #A4B1B8;
+  --gray-500: #7A8992;
+  --gray-600: #5A686F;
+  --gray-700: #445056;
+  --gray-800: #2F383D;
+  --gray-900: #1B2124;
+
+  /* ---------- SEMÂNTICAS ---------- */
+  --green-50:  #ECFDF3;
+  --green-100: #D1FADF;
+  --green-500: #12B76A;
+  --green-600: #039855;
+  --green-700: #027A48;
+
+  --amber-50:  #FFFAEB;
+  --amber-100: #FEF0C7;
+  --amber-500: #F79009;
+  --amber-600: #DC6803;
+  --amber-700: #B54708;
+
+  --red-50:    #FEF3F2;
+  --red-100:   #FEE4E2;
+  --red-500:   #F04438;
+  --red-600:   #D92D20;
+  --red-700:   #B42318;
+
+  --blue-50:   #EFF8FF;
+  --blue-100:  #D1E9FF;
+  --blue-500:  #2E90FA;
+  --blue-600:  #1570EF;
+  --blue-700:  #175CD3;
+
+  --violet-50:  #F4F3FF;
+  --violet-100: #EBE9FE;
+  --violet-600: #6938EF;
+  --violet-700: #5925DC;
+
+  /* ---------- PAPÉIS SEMÂNTICOS ----------
+     Os componentes consomem ESTES tokens, não as rampas acima.
+     Trocar a marca = trocar só este bloco. */
+  --brand:            var(--teal-400);
+  --brand-contrast:   var(--gray-0);
+
+  --primary:          var(--teal-600);
+  --primary-hover:    var(--teal-700);
+  --primary-active:   var(--teal-800);
+  --primary-subtle:   var(--teal-50);
+  --primary-muted:    var(--teal-100);
+  --primary-border:   var(--teal-200);
+  --primary-text:     var(--teal-700);
+  --primary-contrast: var(--gray-0);
+
+  --success:          var(--green-600);
+  --success-subtle:   var(--green-50);
+  --success-muted:    var(--green-100);
+  --success-text:     var(--green-700);
+
+  --warning:          var(--amber-600);
+  --warning-subtle:   var(--amber-50);
+  --warning-muted:    var(--amber-100);
+  --warning-text:     var(--amber-700);
+
+  --danger:           var(--red-600);
+  --danger-hover:     var(--red-700);
+  --danger-subtle:    var(--red-50);
+  --danger-muted:     var(--red-100);
+  --danger-text:      var(--red-700);
+
+  --info:             var(--blue-600);
+  --info-subtle:      var(--blue-50);
+  --info-muted:       var(--blue-100);
+  --info-text:        var(--blue-700);
+
+  /* ---------- SUPERFÍCIES E TEXTO ---------- */
+  --canvas:           var(--gray-50);
+  --surface:          var(--gray-0);
+  --surface-raised:   var(--gray-0);
+  --surface-sunken:   var(--gray-50);
+  --surface-hover:    var(--gray-100);
+
+  --border:           var(--gray-200);
+  --border-strong:    var(--gray-300);
+  --border-subtle:    var(--gray-100);
+
+  --text:             var(--gray-800);
+  --text-strong:      var(--gray-900);
+  --text-muted:       var(--gray-600);
+  --text-subtle:      var(--gray-500);
+  --text-inverse:     var(--gray-0);
+  --text-on-brand:    var(--gray-0);
+
+  /* ---------- TIPOGRAFIA ----------
+     Escala modular 1.125 (major second) ancorada em 16px. */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+               Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-numeric: 'Inter', ui-monospace, 'SF Mono', monospace;
+
+  --text-2xs: 0.6875rem; /* 11px — selos, rótulos densos */
+  --text-xs:  0.75rem;   /* 12px — legendas, metadados */
+  --text-sm:  0.8125rem; /* 13px — tabelas, UI densa */
+  --text-md:  0.875rem;  /* 14px — corpo padrão da UI */
+  --text-base:1rem;      /* 16px — corpo de leitura, mobile */
+  --text-lg:  1.125rem;  /* 18px */
+  --text-xl:  1.25rem;   /* 20px — títulos de card */
+  --text-2xl: 1.5rem;    /* 24px — títulos de página */
+  --text-3xl: 1.875rem;  /* 30px — números de destaque */
+  --text-4xl: 2.25rem;   /* 36px */
+
+  --leading-tight:  1.2;
+  --leading-snug:   1.35;
+  --leading-normal: 1.55;
+  --leading-relaxed:1.7;
+
+  --weight-normal:   400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  --tracking-tight: -0.02em;
+  --tracking-snug:  -0.01em;
+  --tracking-wide:   0.04em;
+  --tracking-caps:   0.06em;
+
+  /* ---------- ESPAÇAMENTO (base 4px) ---------- */
+  --space-0:  0;
+  --space-1:  0.25rem;  /*  4 */
+  --space-2:  0.5rem;   /*  8 */
+  --space-3:  0.75rem;  /* 12 */
+  --space-4:  1rem;     /* 16 */
+  --space-5:  1.25rem;  /* 20 */
+  --space-6:  1.5rem;   /* 24 */
+  --space-8:  2rem;     /* 32 */
+  --space-10: 2.5rem;   /* 40 */
+  --space-12: 3rem;     /* 48 */
+  --space-16: 4rem;     /* 64 */
+  --space-20: 5rem;     /* 80 */
+
+  /* ---------- RAIO ---------- */
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-2xl:  20px;
+  --radius-full: 9999px;
+
+  /* ---------- ELEVAÇÃO ----------
+     Sombras em camadas e de baixa opacidade: o "flat + profundidade
+     sutil" é o que separa produto de protótipo. */
+  --shadow-xs: 0 1px 2px rgba(27, 33, 36, 0.04);
+  --shadow-sm: 0 1px 2px rgba(27, 33, 36, 0.05),
+               0 1px 3px rgba(27, 33, 36, 0.05);
+  --shadow-md: 0 2px 4px rgba(27, 33, 36, 0.04),
+               0 4px 8px rgba(27, 33, 36, 0.06);
+  --shadow-lg: 0 4px 8px rgba(27, 33, 36, 0.04),
+               0 12px 24px rgba(27, 33, 36, 0.08);
+  --shadow-xl: 0 8px 16px rgba(27, 33, 36, 0.06),
+               0 24px 48px rgba(27, 33, 36, 0.12);
+
+  /* ---------- FOCO ----------
+     Anel de foco único e visível em todo o sistema (acessibilidade). */
+  --focus-ring: 0 0 0 3px var(--teal-100);
+  --focus-ring-danger: 0 0 0 3px var(--red-100);
+
+  /* ---------- MOVIMENTO ---------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
+
+  /* ---------- CAMADAS ---------- */
+  --z-sticky:   100;
+  --z-nav:      200;
+  --z-overlay:  900;
+  --z-modal:    1000;
+  --z-toast:    1100;
+
+  /* ---------- MÉTRICAS DE LAYOUT ---------- */
+  --sidebar-width: 268px;
+  --topbar-height: 64px;
+  --bottomnav-height: 68px;
+  --content-max: 1280px;
+  --tap-target: 44px; /* alvo mínimo de toque (mão com luva) */
+}

@@ -1,307 +1,388 @@
-import React, { useState } from 'react';
-import { 
-  CheckSquare, Utensils, ClipboardEdit, 
-  Activity, Pill, PackageOpen, UserCircle,
-  CalendarDays, ShoppingCart, FileText, Database, Shield, LogOut, Key, Calendar, Menu as MenuIcon, X
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Activity, Calendar, CalendarDays, CheckSquare, ClipboardEdit, Database,
+  FileText, KeyRound, LayoutDashboard, LogOut, Menu as MenuIcon, PackageOpen,
+  Pill, ShoppingCart, Shield, Utensils, X,
 } from 'lucide-react';
-import { supabase } from './lib/supabase';
 
 import Login from './components/Login';
+import ErrorBoundary from './components/ErrorBoundary';
+import {
+  Avatar, Button, ToastProvider, ConfirmProvider, useToast, TextField,
+  Modal,
+} from './components/ui';
+import { supabase } from './lib/supabase';
+import { firstName } from './lib/format';
 
-// Cuidador Components
+// Operacional — cuidador
 import Dashboard from './components/Dashboard';
 import ShiftHandover from './components/ShiftHandover';
 import DailyMenu from './components/DailyMenu';
 
-// Enfermeiro Components
+// Operacional — enfermagem
 import VitalsControl from './components/nurse/VitalsControl';
 import MedicationAdmin from './components/nurse/MedicationAdmin';
 import PharmacyStock from './components/nurse/PharmacyStock';
 import Programmation from './components/nurse/Programmation';
 
-// Admin Components
+// Gestão
+import Overview from './components/admin/Overview';
 import ScheduleManagement from './components/admin/ScheduleManagement';
 import InventoryManagement from './components/admin/InventoryManagement';
 import ResidentReports from './components/admin/ResidentReports';
 import DataRegistration from './components/admin/DataRegistration';
 import AccessManagement from './components/admin/AccessManagement';
 
-export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('rt_auth') === 'true');
-  const [currentUser, setCurrentUser] = useState(() => {
-    const user = localStorage.getItem('rt_user');
-    return user ? JSON.parse(user) : null;
-  });
-  const [role, setRole] = useState(() => localStorage.getItem('rt_role') || 'admin');
-  const [activeTab, setActiveTab] = useState(() => {
-    const savedRole = localStorage.getItem('rt_role');
-    if (!savedRole) return 'cadastros';
-    if (savedRole === 'admin') return 'cadastros';
-    if (savedRole === 'enfermeiro') return 'sinais';
-    return 'tarefas';
-  });
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [passwordMsg, setPasswordMsg] = useState('');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+/* ------------------------------------------------------------------
+   Mapa de navegação — fonte única para menu lateral, barra inferior
+   e roteamento. Adicionar uma tela é adicionar uma linha aqui.
+   ------------------------------------------------------------------ */
+const VIEWS = {
+  inicio:       { label: 'Painel',               short: 'Painel',    icon: LayoutDashboard, Component: Overview },
+  cadastros:    { label: 'Central de Cadastros', short: 'Cadastros', icon: Database,     Component: DataRegistration },
+  escalas:      { label: 'Gestão de Escalas',    short: 'Escalas',   icon: CalendarDays, Component: ScheduleManagement },
+  estoque_admin:{ label: 'Estoque e Compras',    short: 'Compras',   icon: ShoppingCart, Component: InventoryManagement },
+  relatorios:   { label: 'Relatórios',           short: 'Relatórios',icon: FileText,     Component: ResidentReports },
+  acessos:      { label: 'Gestão de Acessos',    short: 'Acessos',   icon: Shield,       Component: AccessManagement },
 
-  const handleLogin = (userRole, user) => {
-    setRole(userRole);
-    setCurrentUser(user);
-    setIsAuthenticated(true);
-    
-    localStorage.setItem('rt_auth', 'true');
-    localStorage.setItem('rt_user', JSON.stringify(user));
-    localStorage.setItem('rt_role', userRole);
-    
-    if (userRole === 'admin') setActiveTab('cadastros');
-    else if (userRole === 'enfermeiro') setActiveTab('sinais');
-    else setActiveTab('tarefas');
-  };
+  tarefas:      { label: 'Tarefas do Dia',       short: 'Tarefas',   icon: CheckSquare,  Component: Dashboard },
+  cardapio:     { label: 'Cardápio',             short: 'Cardápio',  icon: Utensils,     Component: DailyMenu },
+  plantao:      { label: 'Passagem de Plantão',  short: 'Plantão',   icon: ClipboardEdit,Component: ShiftHandover },
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setCurrentUser(null);
-    localStorage.removeItem('rt_auth');
-    localStorage.removeItem('rt_user');
-    localStorage.removeItem('rt_role');
-  };
+  sinais:       { label: 'Sinais Vitais',        short: 'Sinais',    icon: Activity,     Component: VitalsControl },
+  medicacoes:   { label: 'Medicação',            short: 'Medicação', icon: Pill,         Component: MedicationAdmin },
+  estoque:      { label: 'Estoque Enfermagem',   short: 'Estoque',   icon: PackageOpen,  Component: PharmacyStock },
+  programacao:  { label: 'Agenda / Programação', short: 'Agenda',    icon: Calendar,     Component: Programmation },
+};
 
-  const handlePasswordChange = async () => {
-    if (!newPassword || newPassword.length < 4) {
-      setPasswordMsg('A senha deve ter pelo menos 4 caracteres.');
+const ADMIN_MENU = [
+  { section: 'Visão geral', items: ['inicio'] },
+  { section: 'Sistema e gestão', items: ['cadastros', 'escalas', 'estoque_admin', 'relatorios', 'acessos'] },
+  { section: 'Operacional — cuidador', items: ['tarefas', 'cardapio', 'plantao'] },
+  { section: 'Operacional — enfermagem', items: ['sinais', 'medicacoes', 'estoque', 'programacao'] },
+];
+
+const NAV_BY_ROLE = {
+  cuidador: ['tarefas', 'cardapio', 'plantao'],
+  enfermeiro: ['sinais', 'medicacoes', 'estoque', 'programacao'],
+};
+
+const HOME_BY_ROLE = { admin: 'inicio', enfermeiro: 'sinais', cuidador: 'tarefas' };
+
+const ROLE_LABEL = {
+  admin: 'Administração',
+  enfermeiro: 'Técnico de enfermagem',
+  cuidador: 'Cuidador(a)',
+};
+
+/* ------------------------------------------------------------------ */
+
+function BrandMark({ className }) {
+  return (
+    <img
+      src="/logo.png"
+      alt="Aurean Residência Terapêutica"
+      className={className}
+      onError={(e) => {
+        e.currentTarget.style.display = 'none';
+      }}
+    />
+  );
+}
+
+/** Troca de senha do próprio usuário. */
+function PasswordModal({ open, onClose, currentUser }) {
+  const toast = useToast();
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setPassword('');
+      setConfirmation('');
+      setError('');
+    }
+  }, [open]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    if (password.length < 6) {
+      setError('A senha precisa ter ao menos 6 caracteres.');
       return;
     }
-    
-    const { error } = await supabase.from('User').update({ password: newPassword }).eq('id', currentUser.id);
-    if (!error) {
-      setPasswordMsg('Senha alterada com sucesso!');
-      setTimeout(() => {
-        setShowPasswordModal(false);
-        setNewPassword('');
-        setPasswordMsg('');
-      }, 2000);
-    } else {
-      setPasswordMsg('Erro ao alterar senha.');
+    if (password !== confirmation) {
+      setError('As duas senhas não conferem.');
+      return;
     }
+
+    setSaving(true);
+    const { error: dbError } = await supabase
+      .from('User')
+      .update({ password })
+      .eq('id', currentUser?.id);
+    setSaving(false);
+
+    if (dbError) {
+      setError('Não foi possível alterar a senha. Tente novamente.');
+      return;
+    }
+    toast.success('Senha alterada com sucesso.');
+    onClose();
   };
 
-  const renderContent = () => {
-    if (role === 'cuidador') {
-      switch (activeTab) {
-        case 'tarefas': return <Dashboard role={role} />;
-        case 'cardapio': return <DailyMenu role={role} />;
-        case 'plantao': return <ShiftHandover currentUser={currentUser} />;
-        default: return <Dashboard />;
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Alterar minha senha"
+      description="A nova senha passa a valer no próximo acesso."
+      size="sm"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" onClick={submit} loading={saving}>Salvar senha</Button>
+        </>
       }
-    } else if (role === 'enfermeiro') {
-      switch (activeTab) {
-        case 'sinais': return <VitalsControl />;
-        case 'medicacoes': return <MedicationAdmin />;
-        case 'estoque': return <PharmacyStock />;
-        case 'programacao': return <Programmation role={role} />;
-        default: return <VitalsControl />;
-      }
-    } else {
-      switch (activeTab) {
-        case 'escalas': return <ScheduleManagement />;
-        case 'estoque_admin': return <InventoryManagement />;
-        case 'relatorios': return <ResidentReports currentUser={currentUser} />;
-        case 'cadastros': return <DataRegistration />;
-        case 'acessos': return <AccessManagement currentUser={currentUser} />;
-        // Cuidador tabs
-        case 'tarefas': return <Dashboard role={role} />;
-        case 'cardapio': return <DailyMenu role={role} />;
-        case 'plantao': return <ShiftHandover currentUser={currentUser} />;
-        // Enfermeiro tabs
-        case 'sinais': return <VitalsControl />;
-        case 'medicacoes': return <MedicationAdmin />;
-        case 'estoque': return <PharmacyStock />;
-        case 'programacao': return <Programmation role={role} />;
-        default: return <DataRegistration />;
-      }
-    }
-  };
+    >
+      <form onSubmit={submit} className="u-stack u-gap-4">
+        <TextField
+          label="Nova senha"
+          type="password"
+          autoComplete="new-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Mínimo de 6 caracteres"
+        />
+        <TextField
+          label="Repita a nova senha"
+          type="password"
+          autoComplete="new-password"
+          value={confirmation}
+          onChange={(e) => setConfirmation(e.target.value)}
+          error={error}
+        />
+      </form>
+    </Modal>
+  );
+}
 
-  if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
-  }
+/* ------------------------------------------------------------------ */
 
-  // ADMIN LAYOUT (Desktop Focus)
+function Workspace({ role, currentUser, onLogout }) {
+  const [activeView, setActiveView] = useState(() => HOME_BY_ROLE[role] || 'tarefas');
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+
+  const view = VIEWS[activeView] || VIEWS[HOME_BY_ROLE[role]];
+  const ViewComponent = view.Component;
+
+  const go = useCallback((key) => {
+    setActiveView(key);
+    setDrawerOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  // Fecha a gaveta com Escape
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const onKey = (e) => e.key === 'Escape' && setDrawerOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
+
+  const userBlock = (
+    <div className="sidebar__user">
+      <Avatar name={currentUser?.name} />
+      <div className="sidebar__user-info">
+        <div className="sidebar__user-name">{currentUser?.name || 'Usuário'}</div>
+        <div className="sidebar__user-role">{ROLE_LABEL[role]}</div>
+      </div>
+    </div>
+  );
+
+  /* ---------------- Perfil administrativo: menu lateral ---------------- */
   if (role === 'admin') {
-    const handleMenuClick = (tab) => {
-      setActiveTab(tab);
-      setIsMobileMenuOpen(false);
-    };
-
     return (
-      <div className="admin-container">
-        <aside className="sidebar">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="sidebar-header-mobile">
-            <div className="sidebar-title" style={{ marginBottom: 0, fontWeight: 700, color: 'var(--primary-dark)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <img src="/logo.png" alt="Logo" style={{ height: '28px', width: 'auto', borderRadius: '4px' }} onError={(e) => e.target.style.display='none'} />
-              Aurean RT - Admin
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button className="btn mobile-logout-only" style={{ padding: '8px', background: 'transparent', border: '1px solid var(--border)' }} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-                {isMobileMenuOpen ? <X size={20} /> : <MenuIcon size={20} />}
-              </button>
-              <button className="btn btn-danger mobile-logout-only" style={{ padding: '8px', display: 'none' }} onClick={handleLogout}>
-                <LogOut size={20} />
-              </button>
+      <div className="shell">
+        {drawerOpen && <div className="sidebar__scrim" onClick={() => setDrawerOpen(false)} />}
+
+        <aside className="sidebar" data-open={drawerOpen}>
+          <div className="sidebar__brand">
+            <BrandMark className="sidebar__logo" />
+            <div className="sidebar__brand-text">
+              <span className="sidebar__brand-name">Aurean</span>
+              <span className="sidebar__brand-sub">Residência Terapêutica</span>
             </div>
           </div>
-          
-          <nav className={`sidebar-menu ${!isMobileMenuOpen ? 'mobile-hidden' : ''}`}>
-            <div style={{ marginBottom: '10px', marginTop: '16px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Administração</div>
-            <a className={`sidebar-link ${activeTab === 'cadastros' ? 'active' : ''}`} onClick={() => handleMenuClick('cadastros')}>
-              <Database size={20} /> Central de Cadastros
-            </a>
-            <a className={`sidebar-link ${activeTab === 'escalas' ? 'active' : ''}`} onClick={() => handleMenuClick('escalas')}>
-              <CalendarDays size={20} /> Gestão de Escalas
-            </a>
-            <a className={`sidebar-link ${activeTab === 'estoque_admin' ? 'active' : ''}`} onClick={() => handleMenuClick('estoque_admin')}>
-              <ShoppingCart size={20} /> Estoque e Compras
-            </a>
-            <a className={`sidebar-link ${activeTab === 'relatorios' ? 'active' : ''}`} onClick={() => handleMenuClick('relatorios')}>
-              <FileText size={20} /> Relatórios
-            </a>
-            <a className={`sidebar-link ${activeTab === 'acessos' ? 'active' : ''}`} onClick={() => handleMenuClick('acessos')}>
-              <Shield size={20} /> Gestão de Acessos
-            </a>
 
-            <div style={{ marginTop: '20px', marginBottom: '10px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Operacional - Cuidador</div>
-            <a className={`sidebar-link ${activeTab === 'tarefas' ? 'active' : ''}`} onClick={() => handleMenuClick('tarefas')}>
-              <CheckSquare size={20} /> Tarefas
-            </a>
-            <a className={`sidebar-link ${activeTab === 'cardapio' ? 'active' : ''}`} onClick={() => handleMenuClick('cardapio')}>
-              <Utensils size={20} /> Cardápio
-            </a>
-            <a className={`sidebar-link ${activeTab === 'plantao' ? 'active' : ''}`} onClick={() => handleMenuClick('plantao')}>
-              <ClipboardEdit size={20} /> Plantão
-            </a>
-
-            <div style={{ marginTop: '20px', marginBottom: '10px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Operacional - Enfermagem</div>
-            <a className={`sidebar-link ${activeTab === 'sinais' ? 'active' : ''}`} onClick={() => handleMenuClick('sinais')}>
-              <Activity size={20} /> Sinais Vitais
-            </a>
-            <a className={`sidebar-link ${activeTab === 'medicacoes' ? 'active' : ''}`} onClick={() => handleMenuClick('medicacoes')}>
-              <Pill size={20} /> Medicação
-            </a>
-            <a className={`sidebar-link ${activeTab === 'estoque' ? 'active' : ''}`} onClick={() => handleMenuClick('estoque')}>
-              <PackageOpen size={20} /> Estoque Enfermagem
-            </a>
-            <a className={`sidebar-link ${activeTab === 'programacao' ? 'active' : ''}`} onClick={() => handleMenuClick('programacao')}>
-              <Calendar size={20} /> Agenda / Prog.
-            </a>
+          <nav className="sidebar__nav" aria-label="Navegação principal">
+            {ADMIN_MENU.map((group) => (
+              <React.Fragment key={group.section}>
+                <div className="sidebar__section">{group.section}</div>
+                {group.items.map((key) => {
+                  const item = VIEWS[key];
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={key}
+                      className="sidebar__link"
+                      aria-current={activeView === key ? 'page' : undefined}
+                      onClick={() => go(key)}
+                    >
+                      <Icon size={18} aria-hidden="true" />
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </React.Fragment>
+            ))}
           </nav>
 
-          <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border)', paddingTop: '20px' }} className="desktop-logout-only">
-            <button className="btn" style={{ width: '100%', background: 'var(--danger-light)', color: 'var(--danger)' }} onClick={handleLogout}>
-              <LogOut size={20} /> Sair do Sistema
-            </button>
+          <div className="sidebar__footer">
+            {userBlock}
+            <div className="u-row u-gap-2">
+              <Button variant="ghost" size="sm" icon={KeyRound} onClick={() => setPasswordOpen(true)} className="u-grow">
+                Senha
+              </Button>
+              <Button variant="ghost" size="sm" icon={LogOut} onClick={onLogout} className="u-grow">
+                Sair
+              </Button>
+            </div>
           </div>
         </aside>
-        
-        <main className="admin-content">
-          {renderContent()}
-        </main>
+
+        <div className="shell__main">
+          <header className="shell__topbar">
+            <Button
+              variant="ghost"
+              size="md"
+              iconOnly
+              icon={drawerOpen ? X : MenuIcon}
+              onClick={() => setDrawerOpen((v) => !v)}
+              aria-label={drawerOpen ? 'Fechar menu' : 'Abrir menu'}
+              aria-expanded={drawerOpen}
+            />
+            <BrandMark className="app__logo" />
+            <Button variant="ghost" size="md" iconOnly icon={LogOut} onClick={onLogout} aria-label="Sair" />
+          </header>
+
+          <main className="shell__content">
+            <ErrorBoundary key={activeView}>
+              <ViewComponent role={role} currentUser={currentUser} />
+            </ErrorBoundary>
+          </main>
+        </div>
+
+        <PasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} currentUser={currentUser} />
       </div>
     );
   }
 
-  // MOBILE LAYOUT (Cuidador & Enfermeiro)
+  /* ---------------- Perfis operacionais: barra inferior ---------------- */
+  const navKeys = NAV_BY_ROLE[role] || NAV_BY_ROLE.cuidador;
+
   return (
-    <div className="mobile-container">
-      <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src="/logo.png" alt="Logo" style={{ height: '40px', width: 'auto', borderRadius: '8px', background: 'white', padding: '2px' }} onError={(e) => e.target.style.display='none'} />
-          <div>
-            <h1 style={{ fontSize: '1.1rem', marginBottom: '4px' }}>Aurean Residência Terapêutica</h1>
-            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)' }}>
-              Olá, {currentUser?.name?.split(' ')[0] || 'Equipe'}
-            </p>
+    <div className="app">
+      <header className="app__header">
+        <div className="app__identity">
+          <BrandMark className="app__logo" />
+          <div className="app__greeting">
+            <div className="app__title">Olá, {firstName(currentUser?.name) || 'equipe'}</div>
+            <div className="app__subtitle">{ROLE_LABEL[role]}</div>
           </div>
         </div>
-        
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button 
-            onClick={() => setShowPasswordModal(true)}
-            style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', padding: '8px', borderRadius: '12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}
-          >
-            <Key size={24} />
-            <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Senha</span>
-          </button>
-          
-          <button 
-            onClick={handleLogout}
-            style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', padding: '8px', borderRadius: '12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}
-          >
-            <LogOut size={24} />
-            <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Sair</span>
-          </button>
+        <div className="u-row u-gap-1">
+          <Button
+            variant="ghost" size="md" iconOnly icon={KeyRound}
+            onClick={() => setPasswordOpen(true)} aria-label="Alterar senha"
+          />
+          <Button
+            variant="ghost" size="md" iconOnly icon={LogOut}
+            onClick={onLogout} aria-label="Sair do sistema"
+          />
         </div>
       </header>
 
-      {/* MODAL TROCAR SENHA */}
-      {showPasswordModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="card" style={{ width: '90%', maxWidth: '360px', padding: '24px' }}>
-            <h3 style={{ fontSize: '1.4rem', marginBottom: '16px', color: 'var(--primary-dark)' }}>Mudar Minha Senha</h3>
-            
-            <label className="input-label">Nova Senha</label>
-            <input 
-              type="password" 
-              className="textarea-huge" 
-              style={{ minHeight: '50px', padding: '12px', fontSize: '1.2rem', marginBottom: '8px' }}
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Digite a nova senha..."
-            />
-            
-            {passwordMsg && <p style={{ color: passwordMsg.includes('sucesso') ? 'var(--secondary)' : 'var(--danger)', fontSize: '0.9rem', marginBottom: '16px', fontWeight: 'bold' }}>{passwordMsg}</p>}
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-              <button className="btn" style={{ flex: 1, border: '1px solid var(--border)' }} onClick={() => setShowPasswordModal(false)}>Fechar</button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={handlePasswordChange}>Salvar Senha</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <main className="main-content">
-        {renderContent()}
+      <main className="app__main">
+        <ErrorBoundary key={activeView}>
+          <ViewComponent role={role} currentUser={currentUser} />
+        </ErrorBoundary>
       </main>
 
-      {/* Navegação condicional baseada no perfil */}
-      {role === 'cuidador' ? (
-        <nav className="bottom-nav">
-          <a href="#" className={`nav-item ${activeTab === 'tarefas' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('tarefas'); }}>
-            <CheckSquare /><span>Tarefas</span>
-          </a>
-          <a href="#" className={`nav-item ${activeTab === 'cardapio' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('cardapio'); }}>
-            <Utensils /><span>Cardápio</span>
-          </a>
-          <a href="#" className={`nav-item ${activeTab === 'plantao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('plantao'); }}>
-            <ClipboardEdit /><span>Plantão</span>
-          </a>
-        </nav>
-      ) : (
-        <nav className="bottom-nav">
-          <a href="#" className={`nav-item ${activeTab === 'sinais' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('sinais'); }}>
-            <Activity /><span>Sinais Vitais</span>
-          </a>
-          <a href="#" className={`nav-item ${activeTab === 'medicacoes' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('medicacoes'); }}>
-            <Pill /><span>Medicação</span>
-          </a>
-          <a href="#" className={`nav-item ${activeTab === 'estoque' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('estoque'); }}>
-            <PackageOpen /><span>Estoque</span>
-          </a>
-          <a href="#" className={`nav-item ${activeTab === 'programacao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('programacao'); }}>
-            <Calendar /><span>Agenda</span>
-          </a>
-        </nav>
-      )}
+      <nav className="bottom-nav" aria-label="Navegação principal">
+        {navKeys.map((key) => {
+          const item = VIEWS[key];
+          const Icon = item.icon;
+          return (
+            <button
+              key={key}
+              className="bottom-nav__item"
+              aria-current={activeView === key ? 'page' : undefined}
+              onClick={() => go(key)}
+            >
+              <Icon size={21} aria-hidden="true" />
+              <span>{item.short}</span>
+            </button>
+          );
+        })}
+      </nav>
+
+      <PasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} currentUser={currentUser} />
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+export default function App() {
+  const [session, setSession] = useState(() => {
+    try {
+      const raw = localStorage.getItem('rt_session');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleLogin = useCallback((role, user) => {
+    const next = { role, user };
+    setSession(next);
+    try {
+      localStorage.setItem('rt_session', JSON.stringify(next));
+    } catch {
+      /* armazenamento indisponível — a sessão vale só para esta aba */
+    }
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    setSession(null);
+    try {
+      ['rt_session', 'rt_auth', 'rt_user', 'rt_role'].forEach((k) => localStorage.removeItem(k));
+    } catch {
+      /* ignora */
+    }
+  }, []);
+
+  const content = useMemo(() => {
+    if (!session) return <Login onLogin={handleLogin} />;
+    return (
+      <Workspace
+        role={session.role}
+        currentUser={session.user}
+        onLogout={handleLogout}
+      />
+    );
+  }, [session, handleLogin, handleLogout]);
+
+  return (
+    <ErrorBoundary>
+      <ToastProvider>
+        <ConfirmProvider>{content}</ConfirmProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }
