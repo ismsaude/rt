@@ -9,12 +9,14 @@ import {
 import { CLINICAL_EVENT_TYPES, formatCouncil, SOCIAL_EVENT_TYPES } from '../../lib/clinical';
 import { Alert, Badge, Button, Disclosure, MonthPicker, Signature, useToast } from '../ui';
 import CloneSheetModal from './CloneSheetModal';
+import SheetPhotos from './SheetPhotos';
 import SignatureModal from '../SignatureModal';
 
 const AUTONOMY_LEVELS = ['Independente', 'Semi-dependente', 'Dependente'];
 
 const EMPTY = {
   emitido_em: '',
+  photos: [],
   observacoes: '',
   intervencoes: '',
   comportamento: '',
@@ -98,6 +100,7 @@ export default function MonthlySheet({
       // Data que sai no documento: a supervisão pode ajustar, já que
       // a ficha nem sempre é emitida no mesmo dia em que foi redigida.
       emitido_em: data?.emitido_em || toISODate(new Date()),
+      photos: Array.isArray(data?.photos) ? data.photos : [],
       // O resumo clínico vem do cadastro quando a ficha ainda não o tem:
       // é a mesma informação em todas as fichas daquele morador.
       observacoes: data?.observacoes || buildObservacoes(resident),
@@ -567,6 +570,13 @@ export default function MonthlySheet({
             placeholder="Ex.: Neste mês foi realizado festividade de carnaval e churrasco para comemoração do aniversariante do mês."
           />
         </section>
+
+        <SheetPhotos
+          photos={form.photos}
+          onChange={(photos) => setForm((f) => ({ ...f, photos }))}
+          residentId={resident.id}
+          monthKey={monthKey}
+        />
 
         <div className="sheet__signature">
           {assinatura ? (

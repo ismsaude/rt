@@ -209,3 +209,106 @@
 @media print {
   .sheet .print-only { display: inline !important; }
 }
+
+/* ------------------------------------------------------------
+   FOTOS DA FICHA
+   Duas por largura, como pediu o documento impresso. A seção não
+   existe quando não há foto — nem na tela, nem no papel.
+   ------------------------------------------------------------ */
+.sheet__photos {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+}
+
+.sheet__photo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.sheet__photo-frame {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--gray-100);
+  aspect-ratio: 4 / 3;
+}
+.sheet__photo-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sheet__photo-remove {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: grid;
+  place-items: center;
+  width: 30px; height: 30px;
+  border-radius: var(--radius-full);
+  background: rgba(27, 33, 36, 0.72);
+  color: #fff;
+  backdrop-filter: blur(2px);
+}
+.sheet__photo-remove:hover { background: var(--danger); }
+
+.sheet__photo-caption {
+  font-size: 9.5pt;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: var(--leading-snug);
+}
+
+/* Campo de legenda embutido, no mesmo espírito do restante da ficha */
+.sheet__photo-caption-input {
+  font: inherit;
+  font-size: 9.5pt;
+  text-align: center;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px dashed transparent;
+  border-radius: var(--radius-xs);
+  padding: 2px var(--space-1);
+  width: 100%;
+  outline: none;
+}
+.sheet__photo-caption-input:hover { border-color: var(--border-strong); }
+.sheet__photo-caption-input:focus { border-color: var(--primary); border-style: solid; background: var(--surface); }
+
+.sheet__photo-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  aspect-ratio: 4 / 3;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: border-color var(--duration-fast), background-color var(--duration-fast);
+}
+.sheet__photo-upload:hover { border-color: var(--primary); color: var(--primary-text); background: var(--primary-subtle); }
+
+@media (max-width: 639px) {
+  .sheet__photos { grid-template-columns: 1fr; }
+}
+
+@media print {
+  .sheet__photo-remove,
+  .sheet__photo-upload { display: none !important; }
+  .sheet__photo-caption-input {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+  .sheet__photos { gap: 6mm; }
+  .sheet__photo-frame { border-color: #ccc; }
+}
