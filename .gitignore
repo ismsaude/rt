@@ -1,2 +1,24 @@
+# Dependências
 node_modules/
+
+# Segredos — NUNCA versionar
 .env
+.env.*
+!.env.example
+
+# Build
+dist/
+build/
+
+# Caches e artefatos locais
+.npm-cache/
+.vite/
+*.log
+npm-debug.log*
+
+# Deploy
+.vercel
+
+# macOS
+.DS_Store
+**/.DS_Store
