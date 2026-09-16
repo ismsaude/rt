@@ -331,6 +331,7 @@ export default function ResidentReports({ currentUser }) {
                   summary={summary}
                   events={events}
                   incidents={incidents}
+                  residents={residents}
                   currentUser={currentUser}
                 />
               )}

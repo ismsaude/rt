@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Printer, Save, Sparkles } from 'lucide-react';
+import { Copy, Printer, Save, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import {
@@ -7,6 +7,7 @@ import {
 } from '../../lib/format';
 import { CLINICAL_EVENT_TYPES, formatCouncil, SOCIAL_EVENT_TYPES } from '../../lib/clinical';
 import { Alert, Badge, Button, MonthPicker, useToast } from '../ui';
+import CloneSheetModal from './CloneSheetModal';
 
 const AUTONOMY_LEVELS = ['Independente', 'Semi-dependente', 'Dependente'];
 
@@ -54,7 +55,8 @@ function AutoTextarea({ value, onChange, placeholder, minRows = 2 }) {
 }
 
 export default function MonthlySheet({
-  resident, monthKey, onMonthChange, months = [], summary, events, incidents, currentUser,
+  resident, monthKey, onMonthChange, months = [], summary, events, incidents,
+  residents = [], currentUser,
 }) {
   const toast = useToast();
 
@@ -62,6 +64,7 @@ export default function MonthlySheet({
   const [record, setRecord] = useState(null);
   const [saving, setSaving] = useState(false);
   const [schemaOk, setSchemaOk] = useState(true);
+  const [cloneOpen, setCloneOpen] = useState(false);
 
   const [year, month] = monthKey.split('-').map(Number);
   const periodo = `${MESES[month - 1]} de ${year}`;
@@ -278,6 +281,13 @@ export default function MonthlySheet({
           )}
         </div>
         <div className="u-row u-gap-2">
+          <Button
+            variant="ghost" icon={Copy}
+            onClick={() => setCloneOpen(true)}
+            disabled={!schemaOk || residents.length < 2}
+          >
+            Copiar para outros
+          </Button>
           <Button variant="secondary" icon={Save} onClick={save} loading={saving} disabled={!schemaOk}>
             Salvar ficha
           </Button>
@@ -486,6 +496,17 @@ export default function MonthlySheet({
           )}
         </div>
       </article>
+
+      <CloneSheetModal
+        open={cloneOpen}
+        onClose={() => setCloneOpen(false)}
+        origem={form}
+        monthKey={monthKey}
+        resident={resident}
+        residents={residents}
+        currentUser={currentUser}
+        onDone={load}
+      />
     </div>
   );
 }
