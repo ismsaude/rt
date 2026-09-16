@@ -3,7 +3,7 @@ import { CalendarDays, Pencil, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { formatDate, MESES } from '../../lib/format';
 import {
-  Alert, Avatar, Badge, Button, Card, CardBody, EmptyState, Modal,
+  Alert, Avatar, Badge, Button, Card, EmptyState, Modal,
   PageHeader, SelectField, SkeletonList, Stat, StatGrid, Table, TextField,
   useToast,
 } from '../ui';

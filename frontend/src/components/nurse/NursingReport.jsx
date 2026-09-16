@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  CheckCircle2, ClipboardPlus, FileText, History, Send, User,
+  CheckCircle2, ClipboardPlus, FileText, History, Send, Sparkles, User,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import { formatDateTime, toISODate } from '../../lib/format';
 import { NURSING_PROCEDURES, NURSING_SHIFTS } from '../../lib/clinical';
 import { saveIncidents } from '../../lib/incidents';
+import { buildNursingDraft, loadDayRecords } from '../../lib/nursingDraft';
 import IncidentsSection from '../IncidentsSection';
 import {
   Alert, Avatar, Badge, Button, Card, CardBody, CardHeader, ChipGroup,
@@ -35,6 +36,7 @@ export default function NursingReport({ currentUser }) {
   const [procedures, setProcedures] = useState([]);
   const [residentNotes, setResidentNotes] = useState({});
   const [incidents, setIncidents] = useState([]);
+  const [drafting, setDrafting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,6 +55,34 @@ export default function NursingReport({ currentUser }) {
   }, [toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  /**
+   * Redige o relatório a partir do que já foi marcado hoje: sinais
+   * aferidos, doses checadas e compromissos da agenda.
+   */
+  const gerarRascunho = async () => {
+    setDrafting(true);
+    const registros = await loadDayRecords(toISODate(new Date()));
+    const { texto, procedimentos, resumo } = buildNursingDraft(registros, { residents });
+    setDrafting(false);
+
+    if (resumo.vazio) {
+      toast.warning(
+        'Nada foi registrado hoje ainda — sem sinais vitais, doses checadas ou compromissos.'
+      );
+      return;
+    }
+
+    setContent((atual) => (atual.trim() ? `${atual.trim()}\n\n${texto}` : texto));
+    setProcedures((atuais) => Array.from(new Set([...atuais, ...procedimentos])));
+
+    const partes = [];
+    if (resumo.sinais) partes.push(`${resumo.sinais} aferição(ões)`);
+    if (resumo.administradas) partes.push(`${resumo.administradas} dose(s) administrada(s)`);
+    if (resumo.recusadas) partes.push(`${resumo.recusadas} recusa(s)`);
+    if (resumo.compromissos) partes.push(`${resumo.compromissos} compromisso(s)`);
+    toast.success(`Rascunho gerado a partir de ${partes.join(', ')}.`);
+  };
 
   const jaFezHoje = history.some(
     (r) => toISODate(r.date) === toISODate(new Date()) && r.shift === shift
@@ -165,7 +195,19 @@ export default function NursingReport({ currentUser }) {
 
       <div className="u-stack u-gap-4">
         <Card>
-          <CardHeader icon={ClipboardPlus} title="Evolução do período" />
+          <CardHeader
+            icon={ClipboardPlus}
+            title="Evolução do período"
+            subtitle="Use o rascunho para partir do que já foi registrado hoje."
+            actions={
+              <Button
+                variant="secondary" size="sm" icon={Sparkles}
+                onClick={gerarRascunho} loading={drafting}
+              >
+                Gerar rascunho
+              </Button>
+            }
+          />
           <CardBody>
             <div className="u-stack u-gap-5">
               <SelectField

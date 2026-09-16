@@ -3,6 +3,8 @@ import {
   AlertTriangle, CheckCircle2, Package, Paperclip, Plus,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { uid } from '../../lib/id';
+import { loadMedications } from '../../lib/medications';
 import {
   Badge, Button, Card, CardBody, EmptyState, Field, Modal, PageHeader,
   SelectField, SkeletonList, TextField, useToast,
@@ -39,40 +41,23 @@ export default function PharmacyStock() {
     setLoading(true);
 
     const [{ data: meds, error: medError }, { data: res }] = await Promise.all([
-      supabase.from('Medication').select('*'),
+      loadMedications(),
       supabase.from('Resident').select('id, name').order('name'),
     ]);
 
     if (medError) toast.error('Não foi possível carregar o estoque.');
     setResidents(res || []);
-
-    let prescriptions = {};
-    try {
-      prescriptions = JSON.parse(localStorage.getItem('rt_prescriptions') || '{}');
-    } catch {
-      prescriptions = {};
-    }
-
-    if (meds?.length) {
-      setStock(
-        meds.map((m) => ({
-          id: m.id,
-          name: [m.name, m.dosage].filter(Boolean).join(' '),
-          qty: m.stock ?? 0,
-          minQty: m.minStock ?? 0,
-          origin: prescriptions[m.id]?.origin || m.origin || 'Não informado',
-          resident: prescriptions[m.id]?.residentName || 'Geral',
-          times: prescriptions[m.id]?.times || [],
-        }))
-      );
-    } else {
-      try {
-        setStock(JSON.parse(localStorage.getItem('rt_stock') || '[]'));
-      } catch {
-        setStock([]);
-      }
-    }
-
+    setStock(
+      (meds || []).map((m) => ({
+        id: m.id,
+        name: [m.name, m.dosage].filter(Boolean).join(' '),
+        qty: m.stock ?? 0,
+        minQty: m.minStock ?? 0,
+        origin: m.origin || 'Não informado',
+        resident: m.resident_name || 'Geral',
+        times: m.times || [],
+      }))
+    );
     setLoading(false);
   }, [toast]);
 
@@ -87,55 +72,54 @@ export default function PharmacyStock() {
     }
 
     setSaving(true);
-    const qty = parseInt(form.qty, 10);
-    const minQty = parseInt(form.minQty || '10', 10);
+    const resident = residents.find((r) => r.id === form.residentId);
 
-    const { data, error } = await supabase
-      .from('Medication')
-      .insert([{ name: form.name.trim(), dosage: form.dosage.trim(), stock: qty, minStock: minQty }])
-      .select();
+    // Horários aceitos como "8", "08:00" ou "8h"; normalizados para HH:MM.
+    const times = form.times
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t) => {
+        const m = t.match(/^(\d{1,2})(?::?(\d{2}))?/);
+        if (!m) return null;
+        return `${m[1].padStart(2, '0')}:${m[2] || '00'}`;
+      })
+      .filter(Boolean)
+      .sort();
+
+    if (times.length === 0) {
+      setSaving(false);
+      toast.warning('Informe ao menos um horário válido, como 08:00.');
+      return;
+    }
+
+    const { error } = await supabase.from('Medication').insert([{
+      id: uid(),
+      name: form.name.trim(),
+      dosage: form.dosage.trim(),
+      stock: parseInt(form.qty, 10),
+      minStock: parseInt(form.minQty || '10', 10),
+      resident_id: form.residentId,
+      resident_name: resident?.name || 'Geral',
+      times,
+      origin: form.origin,
+      active: true,
+    }]);
 
     setSaving(false);
 
     if (error) {
-      toast.error(`Erro ao cadastrar: ${error.message}`);
+      toast.error(
+        /column .* does not exist|schema cache/i.test(error.message || '')
+          ? 'O banco ainda não tem as colunas de morador e horários. Rode a migração 007.'
+          : `Erro ao cadastrar: ${error.message}`
+      );
       return;
-    }
-
-    // Horários e vínculo com o morador ainda não têm coluna própria
-    // no banco; ficam no navegador até a migração da prescrição.
-    const createdId = data?.[0]?.id || Date.now().toString();
-    const resident = residents.find((r) => r.id === form.residentId);
-    const times = form.times.split(',').map((t) => t.trim()).filter(Boolean);
-
-    try {
-      const prescriptions = JSON.parse(localStorage.getItem('rt_prescriptions') || '{}');
-      prescriptions[createdId] = {
-        origin: form.origin,
-        residentId: form.residentId,
-        residentName: resident?.name || 'Geral',
-        times,
-        recipeAttached: !!form.recipe,
-      };
-      localStorage.setItem('rt_prescriptions', JSON.stringify(prescriptions));
-
-      const localStock = JSON.parse(localStorage.getItem('rt_stock') || '[]');
-      localStock.push({
-        id: createdId,
-        name: [form.name.trim(), form.dosage.trim()].filter(Boolean).join(' '),
-        qty, minQty,
-        origin: form.origin,
-        resident: resident?.name || 'Geral',
-        times,
-      });
-      localStorage.setItem('rt_stock', JSON.stringify(localStock));
-    } catch {
-      toast.warning('O medicamento foi salvo, mas os horários não puderam ser guardados neste dispositivo.');
     }
 
     setForm(EMPTY_FORM);
     setFormOpen(false);
-    toast.success('Medicamento cadastrado.');
+    toast.success(`Medicamento cadastrado para ${resident?.name}.`);
     load();
   };
 
@@ -281,7 +265,7 @@ export default function PharmacyStock() {
 
           <TextField
             label="Horários de administração" required
-            hint="Separe por vírgula. Ex.: 08:00, 14:00, 20:00"
+            hint="Separe por vírgula. Ex.: 08:00, 14:00, 20:00 — estes horários aparecem na checagem diária."
             placeholder="08:00, 20:00"
             value={form.times}
             onChange={(e) => setForm((f) => ({ ...f, times: e.target.value }))}

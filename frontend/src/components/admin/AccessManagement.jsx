@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Eye, EyeOff, Pencil, Plus, Save, Shield, Trash2, UserPlus, Users, X,
-} from 'lucide-react';
+  Eye, EyeOff, Pencil, Save, Shield, Trash2, UserPlus, Users, } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import { formatCouncil, PROFESSIONAL_COUNCILS, UFS } from '../../lib/clinical';

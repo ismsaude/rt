@@ -60,12 +60,12 @@ const VIEWS = {
 const ADMIN_MENU = [
   { section: 'Visão geral', items: ['inicio'] },
   { section: 'Sistema e gestão', items: ['cadastros', 'escalas', 'estoque_admin', 'relatorios', 'acessos'] },
-  { section: 'Operacional — cuidador', items: ['tarefas', 'cardapio', 'plantao'] },
+  { section: 'Operacional — cuidador', items: ['tarefas', 'medicacoes', 'cardapio', 'plantao'] },
   { section: 'Operacional — enfermagem', items: ['enfermagem', 'sinais', 'medicacoes', 'estoque', 'programacao'] },
 ];
 
 const NAV_BY_ROLE = {
-  cuidador: ['tarefas', 'cardapio', 'plantao'],
+  cuidador: ['tarefas', 'medicacoes', 'cardapio', 'plantao'],
   enfermeiro: ['enfermagem', 'sinais', 'medicacoes', 'estoque', 'programacao'],
 };
 

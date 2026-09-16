@@ -10,7 +10,7 @@ import {
   classifyBloodPressure, classifyVital, vitalLabel, vitalTone, worstStatus,
 } from '../../lib/vitals';
 import {
-  Alert, Avatar, Badge, Button, Card, CardBody, CardHeader, EmptyState,
+  Alert, Avatar, Badge, Button, Card, CardBody, EmptyState,
   Field, Input, PageHeader, SkeletonList, TextareaField, useToast,
 } from '../ui';
 
