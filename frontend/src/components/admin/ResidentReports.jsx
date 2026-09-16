@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, BookOpen, CalendarDays, Check, CheckCircle2, ClipboardList,
   Droplets, Eye, FileText, LayoutDashboard, MessageSquareText, Pill, Printer,
-  RefreshCw, Save, Siren, Sparkles, Trash2, User, Utensils,
+  CalendarPlus, RefreshCw, Save, Siren, Sparkles, Trash2, User, Utensils,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import MonthlySheet from './MonthlySheet';
+import DuplicateMonthModal from './DuplicateMonthModal';
 import { behaviorTone, severityTone } from '../../lib/clinical';
 import {
   firstName, formatDate, formatDateTime, formatDayMonth, formatMonthLabel,
@@ -49,6 +50,7 @@ export default function ResidentReports({ currentUser }) {
 
   // Consolidado mensal
   const [monthView, setMonthView] = useState('ficha');
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [onlyWritten, setOnlyWritten] = useState(false);
   const [showGeneral, setShowGeneral] = useState(true);
   const [residentId, setResidentId] = useState('');
@@ -226,9 +228,20 @@ export default function ResidentReports({ currentUser }) {
         title="Evolução e relatórios"
         description="Consolidação dos plantões para acompanhamento e auditoria."
         actions={
-          <Button variant="secondary" icon={Printer} onClick={() => window.print()} className="print-hide">
-            Imprimir
-          </Button>
+          <>
+            {tab === 'mensal' && (
+              <Button
+                variant="secondary" icon={CalendarPlus}
+                onClick={() => setDuplicateOpen(true)}
+                className="print-hide"
+              >
+                Duplicar mês
+              </Button>
+            )}
+            <Button variant="ghost" icon={Printer} onClick={() => window.print()} className="print-hide">
+              Imprimir
+            </Button>
+          </>
         }
       />
 
@@ -960,6 +973,14 @@ export default function ResidentReports({ currentUser }) {
           </div>
         </div>
       )}
+      <DuplicateMonthModal
+        open={duplicateOpen}
+        onClose={() => setDuplicateOpen(false)}
+        monthKey={monthKey}
+        residents={residents}
+        currentUser={currentUser}
+        onDone={(destino) => { setMonthKey(destino); load(); }}
+      />
     </div>
   );
 }

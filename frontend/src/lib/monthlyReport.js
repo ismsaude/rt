@@ -162,3 +162,90 @@ export function buildObservacoes(resident) {
 
   return `${abertura}, ${listarComE(condicoes)}.`;
 }
+
+/*
+ * ------------------------------------------------------------------
+ * Duplicação de um mês inteiro
+ *
+ * Boa parte da ficha é estável: as condições clínicas do morador são as
+ * mesmas em janeiro e em dezembro. Já intervenções, comportamento e
+ * interações descrevem o que aconteceu naquele mês — levá-las adiante
+ * faz a ficha de abril afirmar uma consulta que só existiu em março.
+ *
+ * Por isso a duplicação nasce marcando apenas o que não muda, e a
+ * assinatura NUNCA é copiada: um documento assinado em março não pode
+ * chegar a abril já assinado.
+ * ------------------------------------------------------------------
+ */
+
+/** Seções que descrevem o morador, não o período. */
+export const DEFAULT_MONTH_SECTIONS = ['observacoes'];
+
+/** Campos de assinatura, zerados em qualquer cópia. */
+const CAMPOS_ASSINATURA = [
+  'signed_by_name', 'signed_by_role', 'signed_council',
+  'signed_at', 'signed_ip', 'signed_device',
+];
+
+/**
+ * Copia as fichas de um mês para outro.
+ *
+ * @param {string}   fromMonth   'YYYY-MM' de origem
+ * @param {string}   toMonth     'YYYY-MM' de destino
+ * @param {string[]} sections    chaves de SHEET_SECTIONS
+ * @param {string[]} residentIds moradores a duplicar
+ * @param {object}   author      { name }
+ */
+export async function duplicateMonth({ fromMonth, toMonth, sections, residentIds, author }) {
+  if (fromMonth === toMonth) {
+    return { ok: 0, erros: [{ mensagem: 'Origem e destino são o mesmo mês.' }] };
+  }
+
+  const { porMorador: origem } = await loadMonthSheets(fromMonth);
+  const { porMorador: destino } = await loadMonthSheets(toMonth);
+
+  const erros = [];
+  let ok = 0;
+
+  for (const id of residentIds) {
+    const base = origem.get(id);
+    if (!base) continue;
+
+    const recorte = {};
+    sections.forEach((key) => { recorte[key] = base[key] || ''; });
+
+    // A autonomia acompanha porque é atributo do morador, não do mês.
+    CAMPOS_AUTONOMIA.forEach((c) => { recorte[c] = base[c] || ''; });
+
+    // A assinatura fica para trás, sempre.
+    CAMPOS_ASSINATURA.forEach((c) => { recorte[c] = null; });
+
+    const payload = {
+      ...recorte,
+      resident_id: id,
+      resident_name: base.resident_name,
+      month: toMonth,
+      author_name: author?.name || 'Supervisão',
+      emitido_em: null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const existente = destino.get(id);
+    const { error } = existente
+      ? await supabase.from('MonthlyReport').update(payload).eq('id', existente.id)
+      : await supabase.from('MonthlyReport').insert([{ id: uid(), ...payload }]);
+
+    if (error) erros.push({ morador: base.resident_name, mensagem: error.message });
+    else ok += 1;
+  }
+
+  return { ok, erros };
+}
+
+/** Mês seguinte a 'YYYY-MM'. */
+export function proximoMes(monthKey) {
+  const [y, m] = String(monthKey).split('-').map(Number);
+  const d = new Date(y, m - 1, 1);
+  d.setMonth(d.getMonth() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
