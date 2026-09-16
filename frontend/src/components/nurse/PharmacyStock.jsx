@@ -104,6 +104,7 @@ export default function PharmacyStock() {
       times,
       origin: form.origin,
       active: true,
+      updatedAt: new Date().toISOString(),
     }]);
 
     setSaving(false);

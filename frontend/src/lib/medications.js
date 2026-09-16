@@ -101,7 +101,7 @@ export async function registerDose(dose, { status, justification = '', user }) {
     administeredAt: new Date().toISOString(),
     given_by_name: user?.name || 'Equipe',
     given_by_role: user?.role || null,
-    userId: user?.id || null,
+    given_by_id: user?.id || null,
   }]);
 
   // 23505 = violação de índice único: a dose já foi registrada.
