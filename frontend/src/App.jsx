@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity, Calendar, CalendarDays, CheckSquare, ClipboardEdit, Database,
   FileText, KeyRound, LayoutDashboard, LogOut, Menu as MenuIcon, PackageOpen,
-  Pill, ShoppingCart, Shield, Utensils, X,
+  Pill, ShoppingCart, Shield, Stethoscope, Utensils, X,
 } from 'lucide-react';
 
 import Login from './components/Login';
@@ -24,6 +24,7 @@ import VitalsControl from './components/nurse/VitalsControl';
 import MedicationAdmin from './components/nurse/MedicationAdmin';
 import PharmacyStock from './components/nurse/PharmacyStock';
 import Programmation from './components/nurse/Programmation';
+import NursingReport from './components/nurse/NursingReport';
 
 // Gestão
 import Overview from './components/admin/Overview';
@@ -53,21 +54,22 @@ const VIEWS = {
   medicacoes:   { label: 'Medicação',            short: 'Medicação', icon: Pill,         Component: MedicationAdmin },
   estoque:      { label: 'Estoque Enfermagem',   short: 'Estoque',   icon: PackageOpen,  Component: PharmacyStock },
   programacao:  { label: 'Agenda / Programação', short: 'Agenda',    icon: Calendar,     Component: Programmation },
+  enfermagem:   { label: 'Relatório de Enfermagem', short: 'Relatório', icon: Stethoscope, Component: NursingReport },
 };
 
 const ADMIN_MENU = [
   { section: 'Visão geral', items: ['inicio'] },
   { section: 'Sistema e gestão', items: ['cadastros', 'escalas', 'estoque_admin', 'relatorios', 'acessos'] },
   { section: 'Operacional — cuidador', items: ['tarefas', 'cardapio', 'plantao'] },
-  { section: 'Operacional — enfermagem', items: ['sinais', 'medicacoes', 'estoque', 'programacao'] },
+  { section: 'Operacional — enfermagem', items: ['enfermagem', 'sinais', 'medicacoes', 'estoque', 'programacao'] },
 ];
 
 const NAV_BY_ROLE = {
   cuidador: ['tarefas', 'cardapio', 'plantao'],
-  enfermeiro: ['sinais', 'medicacoes', 'estoque', 'programacao'],
+  enfermeiro: ['enfermagem', 'sinais', 'medicacoes', 'estoque', 'programacao'],
 };
 
-const HOME_BY_ROLE = { admin: 'inicio', enfermeiro: 'sinais', cuidador: 'tarefas' };
+const HOME_BY_ROLE = { admin: 'inicio', enfermeiro: 'enfermagem', cuidador: 'tarefas' };
 
 const ROLE_LABEL = {
   admin: 'Administração',

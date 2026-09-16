@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Printer, Save, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
-import { calcAge, formatDate, formatDateTime, MESES, toDate } from '../../lib/format';
+import { calcAge, formatDate, formatDateTime, MESES, toDate, toISODate } from '../../lib/format';
 import { CLINICAL_EVENT_TYPES, formatCouncil, SOCIAL_EVENT_TYPES } from '../../lib/clinical';
 import { Alert, Badge, Button, useToast } from '../ui';
 
 const AUTONOMY_LEVELS = ['Independente', 'Semi-dependente', 'Dependente'];
 
 const EMPTY = {
+  emitido_em: '',
   intervencoes: '',
   comportamento: '',
   adesao: '',
@@ -81,6 +82,9 @@ export default function MonthlySheet({ resident, monthKey, summary, events, inci
     // Autonomia vem do cadastro do morador quando a ficha do mês
     // ainda não foi preenchida — evita redigitar um dado estável.
     setForm({
+      // Data que sai no documento: a supervisão pode ajustar, já que
+      // a ficha nem sempre é emitida no mesmo dia em que foi redigida.
+      emitido_em: data?.emitido_em || toISODate(new Date()),
       intervencoes: data?.intervencoes || '',
       comportamento: data?.comportamento || '',
       adesao: data?.adesao || '',
@@ -256,7 +260,6 @@ export default function MonthlySheet({ resident, monthKey, summary, events, inci
   if (!resident) return null;
 
   const idade = calcAge(resident.dateOfBirth);
-  const emissao = formatDate(new Date());
 
   return (
     <div>
@@ -317,7 +320,19 @@ export default function MonthlySheet({ resident, monthKey, summary, events, inci
             </div>
             <div className="sheet__meta-item">
               <span className="sheet__meta-label">DATA:</span>
-              <span className="sheet__meta-value">{emissao}</span>
+              <span className="sheet__meta-value print-hide">
+                <input
+                  type="date"
+                  className="sheet-select"
+                  style={{ minWidth: '9.5rem' }}
+                  value={form.emitido_em}
+                  onChange={set('emitido_em')}
+                  aria-label="Data de emissão da ficha"
+                />
+              </span>
+              <span className="sheet__meta-value print-only">
+                {formatDate(form.emitido_em)}
+              </span>
             </div>
           </div>
 

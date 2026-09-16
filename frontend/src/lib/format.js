@@ -105,3 +105,33 @@ export function firstName(name) {
 export function pluralize(count, singular, plural) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
+
+/** "Hoje", "Amanhã" ou o dia da semana abreviado. */
+export function relativeDayLabel(value) {
+  const d = toDate(value);
+  if (!d) return '';
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const alvo = new Date(d);
+  alvo.setHours(0, 0, 0, 0);
+
+  const dias = Math.round((alvo - hoje) / 86400000);
+  if (dias === 0) return 'Hoje';
+  if (dias === 1) return 'Amanhã';
+  return DIAS_SEMANA_CURTO[alvo.getDay()];
+}
+
+/** Compromisso é iminente quando cai hoje ou amanhã. */
+export function isSoon(value) {
+  const d = toDate(value);
+  if (!d) return false;
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const alvo = new Date(d);
+  alvo.setHours(0, 0, 0, 0);
+
+  const dias = Math.round((alvo - hoje) / 86400000);
+  return dias === 0 || dias === 1;
+}

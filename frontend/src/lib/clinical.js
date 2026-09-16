@@ -139,3 +139,21 @@ export function formatCouncil({ professional_council, professional_id, professio
     : '';
   return [sigla, professional_id].filter(Boolean).join(' ');
 }
+
+/* ------------------------------------------------------------------
+   Enfermagem
+   ------------------------------------------------------------------ */
+export const NURSING_SHIFTS = ['Manhã', 'Tarde', 'Noite'];
+
+export const NURSING_PROCEDURES = [
+  'Aferição de sinais vitais',
+  'Administração de medicação',
+  'Glicemia capilar',
+  'Curativo',
+  'Coleta de exame',
+  'Acompanhamento em consulta',
+  'Orientação em saúde',
+  'Organização da farmácia',
+  'Contato com a rede/CAPS',
+  'Outro',
+];

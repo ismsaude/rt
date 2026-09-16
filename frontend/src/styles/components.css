@@ -1010,3 +1010,90 @@ body:has(.bottom-nav) { --toast-offset: var(--bottomnav-height); }
     font-size: 16px;
   }
 }
+
+/* ------------------------------------------------------------
+   AGENDA COMPACTA
+   Lista de compromissos na tela da cuidadora, que é sempre um
+   celular: cada item ocupa duas linhas, para que vários caibam
+   sem empurrar as tarefas para fora da tela.
+   ------------------------------------------------------------ */
+.agenda { display: flex; flex-direction: column; }
+
+.agenda__item {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  align-items: start;
+}
+.agenda__item:first-child { padding-top: 0; }
+.agenda__item:last-child { border-bottom: none; padding-bottom: 0; }
+
+/* Coluna do dia */
+.agenda__when {
+  text-align: center;
+  padding: var(--space-1) 0;
+  border-radius: var(--radius-sm);
+  background: var(--gray-100);
+}
+.agenda__when--soon { background: var(--warning-muted); }
+
+.agenda__day {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+.agenda__when--soon .agenda__day { color: var(--warning-text); }
+
+.agenda__weekday {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  font-weight: var(--weight-semibold);
+  color: var(--text-subtle);
+  margin-top: 2px;
+}
+.agenda__when--soon .agenda__weekday { color: var(--warning-text); }
+
+/* Conteúdo */
+.agenda__body { min-width: 0; }
+
+.agenda__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+  line-height: var(--leading-snug);
+}
+.agenda__time {
+  font-variant-numeric: tabular-nums;
+  color: var(--primary-text);
+  font-weight: var(--weight-bold);
+  flex-shrink: 0;
+}
+
+.agenda__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin-top: 2px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* Observação do compromisso: precisa ser vista de manhã */
+.agenda__note {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--warning-subtle);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--warning-text);
+  font-weight: var(--weight-medium);
+}

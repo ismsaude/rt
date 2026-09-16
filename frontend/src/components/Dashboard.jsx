@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  CalendarClock, CheckCircle2, Circle, Clock, ListChecks, MapPin, Plus, Trash2, User,
+  CalendarClock, CheckCircle2, Circle, ListChecks, MapPin, Plus, Trash2, User,
 } from 'lucide-react';
-import { formatDateTime, toISODate } from '../lib/format';
+import { formatDateTime, isSoon, relativeDayLabel, toDate, toISODate } from '../lib/format';
 import { SOCIAL_EVENT_TYPES } from '../lib/clinical';
 import { supabase } from '../lib/supabase';
 import {
@@ -38,10 +38,16 @@ export default function Dashboard({ role, currentUser }) {
     // Ordena no cliente: "time" é opcional e tarefas sem horário
     // devem ficar no fim, o que o ORDER BY do banco não resolveria.
     const hoje = toISODate(new Date());
+    const limite = new Date();
+    limite.setDate(limite.getDate() + 7);
 
     const [{ data, error }, { data: evs }] = await Promise.all([
       supabase.from('Task').select('*'),
-      supabase.from('Event').select('*').eq('date', hoje),
+      supabase
+        .from('Event')
+        .select('*')
+        .gte('date', hoje)
+        .lte('date', toISODate(limite)),
     ]);
 
     if (error) {
@@ -52,7 +58,9 @@ export default function Dashboard({ role, currentUser }) {
     }
 
     setEvents(
-      (evs || []).sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')))
+      (evs || []).sort((a, b) =>
+        `${a.date}T${a.time || '00:00'}`.localeCompare(`${b.date}T${b.time || '00:00'}`)
+      )
     );
     setLoading(false);
   }, [toast]);
@@ -134,73 +142,59 @@ export default function Dashboard({ role, currentUser }) {
         }
       />
 
-      {/* Compromissos do dia — a cuidadora precisa saber que alguém
-          sai para consulta antes de planejar o resto da rotina. */}
+      {/* Compromissos dos próximos 7 dias. Layout compacto: a tela é
+          sempre um celular, e a lista não pode empurrar as tarefas
+          para fora do campo de visão. */}
       {!loading && events.length > 0 && (
         <Card accent="warning" style={{ marginBottom: 'var(--space-5)' }}>
           <CardHeader
             icon={CalendarClock}
-            title={
+            title="Próximos compromissos"
+            subtitle={
               events.length === 1
-                ? '1 compromisso hoje'
-                : `${events.length} compromissos hoje`
+                ? '1 agendamento nos próximos 7 dias'
+                : `${events.length} agendamentos nos próximos 7 dias`
             }
-            subtitle="Consultas, exames e saídas agendadas para a casa"
           />
           <CardBody tight>
-            <div className="u-stack u-gap-3">
-              {events.map((ev) => (
-                <div
-                  key={ev.id}
-                  style={{
-                    display: 'flex',
-                    gap: 'var(--space-3)',
-                    alignItems: 'flex-start',
-                  }}
-                >
-                  <Badge tone="warning" icon={Clock}>{ev.time}</Badge>
-                  <div className="u-grow" style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontWeight: 'var(--weight-semibold)',
-                        color: 'var(--text-strong)',
-                      }}
-                    >
-                      {ev.title}
+            <div className="agenda">
+              {events.map((ev) => {
+                const d = toDate(ev.date);
+                const soon = isSoon(ev.date);
+                return (
+                  <div className="agenda__item" key={ev.id}>
+                    <div className={`agenda__when ${soon ? 'agenda__when--soon' : ''}`}>
+                      <div className="agenda__day">
+                        {String(d.getDate()).padStart(2, '0')}
+                      </div>
+                      <div className="agenda__weekday">{relativeDayLabel(ev.date)}</div>
                     </div>
-                    <div
-                      className="u-row u-wrap u-gap-3 u-muted"
-                      style={{ fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)' }}
-                    >
-                      <span className="u-row u-gap-1">
-                        <User size={13} aria-hidden="true" /> {ev.resident_name}
-                      </span>
-                      {ev.location && (
+
+                    <div className="agenda__body">
+                      <div className="agenda__title">
+                        <span className="agenda__time">{ev.time}</span>
+                        <span>{ev.title}</span>
+                      </div>
+                      <div className="agenda__meta">
                         <span className="u-row u-gap-1">
-                          <MapPin size={13} aria-hidden="true" /> {ev.location}
+                          <User size={12} aria-hidden="true" /> {ev.resident_name}
                         </span>
-                      )}
+                        {ev.location && (
+                          <span className="u-row u-gap-1">
+                            <MapPin size={12} aria-hidden="true" /> {ev.location}
+                          </span>
+                        )}
+                        {ev.type && (
+                          <Badge tone={SOCIAL_EVENT_TYPES.includes(ev.type) ? 'success' : 'info'}>
+                            {ev.type}
+                          </Badge>
+                        )}
+                      </div>
+                      {ev.notes && <div className="agenda__note">{ev.notes}</div>}
                     </div>
-                    {ev.notes && (
-                      <p
-                        style={{
-                          fontSize: 'var(--text-sm)',
-                          color: 'var(--warning-text)',
-                          marginTop: 'var(--space-2)',
-                          fontWeight: 'var(--weight-medium)',
-                        }}
-                      >
-                        {ev.notes}
-                      </p>
-                    )}
                   </div>
-                  {ev.type && (
-                    <Badge tone={SOCIAL_EVENT_TYPES.includes(ev.type) ? 'success' : 'info'}>
-                      {ev.type}
-                    </Badge>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardBody>
         </Card>

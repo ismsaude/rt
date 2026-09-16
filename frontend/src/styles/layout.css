@@ -231,6 +231,7 @@
 }
 .bottom-nav__item {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -247,6 +248,18 @@
 }
 .bottom-nav__item:hover { text-decoration: none; }
 .bottom-nav__item svg { stroke-width: 1.75; }
+
+/* Cinco itens na barra: o rótulo não pode quebrar linha */
+.bottom-nav__item > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 400px) {
+  .bottom-nav__item { padding-inline: 2px; font-size: 0.625rem; }
+}
 .bottom-nav__item[aria-current='page'] { color: var(--primary-text); font-weight: var(--weight-semibold); }
 .bottom-nav__item[aria-current='page'] svg { stroke-width: 2.25; }
 .bottom-nav__item[aria-current='page']::before {

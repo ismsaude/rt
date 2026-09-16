@@ -200,3 +200,9 @@
 
 /* O título de seção e o botão de rascunho não se empurram */
 .sheet__section-title { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+
+
+/* No papel, o campo de data vira texto simples */
+@media print {
+  .sheet .print-only { display: inline !important; }
+}
