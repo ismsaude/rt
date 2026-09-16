@@ -71,13 +71,19 @@ export default function SheetPhotos({ photos, onChange, residentId, monthKey }) 
   const legendar = (path, caption) =>
     onChange((photos || []).map((p) => (p.path === path ? { ...p, caption } : p)));
 
-  const vazia = (photos || []).length === 0;
+  const total = (photos || []).length;
+  const vazia = total === 0;
+
+  // Todas as fotos dividem uma única linha, com a mesma largura: duas
+  // ocupam metade cada, seis ocupam um sexto. Uma foto sozinha fica em
+  // meia largura, para não dominar a página.
+  const porLinha = Math.max(total, 2);
 
   return (
     <section className="sheet__section">
       {!vazia && <h2 className="sheet__section-title">REGISTRO FOTOGRÁFICO</h2>}
 
-      <div className="sheet__photos">
+      <div className="sheet__photos" style={{ '--fotos-por-linha': porLinha }}>
         {comUrl.map((foto) => (
           <figure className="sheet__photo" key={foto.path}>
             <div className="sheet__photo-frame">

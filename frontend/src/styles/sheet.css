@@ -215,10 +215,14 @@
    Duas por largura, como pediu o documento impresso. A seção não
    existe quando não há foto — nem na tela, nem no papel.
    ------------------------------------------------------------ */
+/* O número de colunas acompanha a quantidade de fotos: todas dividem
+   uma única linha com a mesma largura. Duas ocupam metade cada, seis
+   ocupam um sexto. */
 .sheet__photos {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(var(--fotos-por-linha, 2), 1fr);
   gap: var(--space-4);
+  align-items: start;
 }
 
 .sheet__photo {
@@ -309,6 +313,7 @@
     background: transparent !important;
     padding: 0 !important;
   }
-  .sheet__photos { gap: 6mm; }
+  /* Com muitas fotos o espaçamento aperta, para sobrar largura à imagem */
+  .sheet__photos { gap: 4mm; }
   .sheet__photo-frame { border-color: #ccc; }
 }
