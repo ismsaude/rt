@@ -214,12 +214,19 @@ export default function ShiftHandover({ currentUser }) {
                     <Avatar name={resident.name} />
                     <div>
                       <div className="card__title">{resident.name}</div>
-                      {resident.allergies && (
-                        <div className="card__subtitle">Alergias: {resident.allergies}</div>
+                      {resident.conditions && (
+                        <div className="card__subtitle">{resident.conditions}</div>
                       )}
                     </div>
                   </div>
-                  {hasAttention && <Badge tone="warning" icon={AlertTriangle}>Atenção</Badge>}
+                  <div className="u-row u-gap-2" style={{ flexShrink: 0 }}>
+                    {resident.allergies && (
+                      <Badge tone="danger" icon={AlertTriangle}>
+                        Alergia: {resident.allergies}
+                      </Badge>
+                    )}
+                    {hasAttention && <Badge tone="warning" icon={AlertTriangle}>Atenção</Badge>}
+                  </div>
                 </CardHeader>
 
                 <CardBody>

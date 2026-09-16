@@ -147,7 +147,7 @@ export function buildObservacoes(resident) {
     ? `${tratamento} de ${idade} anos`
     : tratamento;
 
-  const condicoes = String(resident.allergies || '')
+  const condicoes = String(resident.conditions || resident.allergies || '')
     .split(/[,;]/)
     .map((c) => c.trim())
     .filter(Boolean)

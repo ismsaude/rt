@@ -15,7 +15,7 @@ const FOOD_CATEGORIES = ['Básico', 'Limpeza', 'Higiene', 'Verduras', 'Proteína
 const FOOD_UNITS = ['unidades', 'kg', 'litros', 'pacotes'];
 
 const EMPTY_RESIDENT = {
-  name: '', cpf: '', dateOfBirth: '', sex: '', allergies: '',
+  name: '', cpf: '', dateOfBirth: '', sex: '', conditions: '', allergies: '',
   autonomy_hygiene: '', autonomy_food: '', autonomy_activities: '',
 };
 const EMPTY_FOOD = { name: '', category: 'Básico', unit: 'unidades', quantity: '', minQuantity: '' };
@@ -72,6 +72,7 @@ export default function DataRegistration() {
       cpf: r.cpf || '',
       dateOfBirth: r.dateOfBirth ? String(r.dateOfBirth).split('T')[0] : '',
       sex: r.sex || '',
+      conditions: r.conditions || '',
       allergies: r.allergies || '',
       autonomy_hygiene: r.autonomy_hygiene || '',
       autonomy_food: r.autonomy_food || '',
@@ -251,6 +252,9 @@ export default function DataRegistration() {
                         </span>
                       )}
                     </td>
+                    <td className="table__cell-muted">
+                      {r.conditions || '—'}
+                    </td>
                     <td>
                       {r.allergies ? (
                         <Badge tone="danger" icon={TriangleAlert}>{r.allergies}</Badge>
@@ -379,9 +383,17 @@ export default function DataRegistration() {
               <option value="Feminino">Feminino</option>
             </SelectField>
             <TextField
-              label="Condições clínicas e alergias"
-              hint="Separe por vírgula. Alimenta o resumo da ficha mensal e aparece em destaque na passagem de plantão."
-              placeholder="Ex.: diabético, hipertensivo, alergia a dipirona"
+              label="Condições clínicas"
+              hint="Separe por vírgula. Alimenta o resumo da ficha mensal."
+              placeholder="Ex.: diabético, hipertensivo, esquizofrênico"
+              value={resident.conditions}
+              onChange={(e) => setResident((r) => ({ ...r, conditions: e.target.value }))}
+            />
+
+            <TextField
+              label="Alergias"
+              hint="Somente alergias e reações adversas. Aparece em destaque na passagem de plantão."
+              placeholder="Ex.: dipirona, penicilina, frutos do mar"
               value={resident.allergies}
               onChange={(e) => setResident((r) => ({ ...r, allergies: e.target.value }))}
             />
