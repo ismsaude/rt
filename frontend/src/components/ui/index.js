@@ -15,6 +15,7 @@ export { default as MonthPicker } from './MonthPicker';
 export { default as Badge } from './Badge';
 export { default as ChipGroup } from './ChipGroup';
 export { default as Alert } from './Alert';
+export { default as Disclosure } from './Disclosure';
 export { default as EmptyState } from './EmptyState';
 export { default as Signature } from './Signature';
 export { Skeleton, SkeletonText, SkeletonList } from './Skeleton';

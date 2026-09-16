@@ -247,39 +247,41 @@ export default function ResidentReports({ currentUser }) {
       {/* ================= CONSOLIDADO MENSAL ================= */}
       {tab === 'mensal' && (
         <div>
-          <Card className="print-hide" style={{ marginBottom: 'var(--space-6)' }}>
-            <CardBody>
-              <div className="field-row">
-                <SelectField
-                  label="Morador" icon={User}
-                  value={residentId}
-                  onChange={(e) => setResidentId(e.target.value)}
+          <Card className="print-hide" style={{ marginBottom: 'var(--space-4)' }}>
+            <CardBody tight>
+              <div className="u-between u-gap-4 u-wrap">
+                <div
+                  className="u-row u-gap-4 u-wrap"
+                  style={{ flex: '1 1 420px', minWidth: 0 }}
                 >
-                  {residents.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </SelectField>
+                  <SelectField
+                    label="Morador" icon={User}
+                    value={residentId}
+                    onChange={(e) => setResidentId(e.target.value)}
+                    className="u-grow"
+                    style={{ minWidth: 200 }}
+                  >
+                    {residents.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </SelectField>
 
-                <Field
-                  label="Mês de referência"
-                  hint="O ponto marca os meses que já possuem plantões registrados."
-                >
-                  <MonthPicker value={monthKey} onChange={setMonthKey} withData={months} />
-                </Field>
+                  <Field label="Mês de referência">
+                    <MonthPicker value={monthKey} onChange={setMonthKey} withData={months} />
+                  </Field>
+                </div>
+
+                <Segmented
+                  ariaLabel="Modo de visualização do mês"
+                  value={monthView}
+                  onChange={setMonthView}
+                  options={[
+                    { value: 'ficha', label: 'Ficha', icon: ClipboardList },
+                    { value: 'leitura', label: 'Leitura', icon: BookOpen },
+                    { value: 'resumo', label: 'Resumo', icon: LayoutDashboard },
+                  ]}
+                />
               </div>
             </CardBody>
           </Card>
-
-          <div className="print-hide" style={{ marginBottom: 'var(--space-6)' }}>
-            <Segmented
-              ariaLabel="Modo de visualização do mês"
-              value={monthView}
-              onChange={setMonthView}
-              options={[
-                { value: 'ficha', label: 'Ficha mensal', icon: ClipboardList },
-                { value: 'leitura', label: 'Leitura', icon: BookOpen },
-                { value: 'resumo', label: 'Resumo', icon: LayoutDashboard },
-              ]}
-            />
-          </div>
 
           {/* Cabeçalho que só aparece no papel (a ficha traz o seu próprio) */}
           <div className={monthView === 'ficha' ? 'u-sr-only' : 'print-doc-header'}>
@@ -314,10 +316,9 @@ export default function ResidentReports({ currentUser }) {
             <div className="u-stack u-gap-6">
               {monthView === 'ficha' && summary.totalPlantoes === 0 && (
                 <div className="print-hide" style={{ maxWidth: 820, margin: '0 auto var(--space-4)' }}>
-                  <Alert tone="info" title="Período sem plantões registrados">
-                    Não há passagens de plantão de {resident?.name} em{' '}
-                    {formatMonthLabel(monthKey)}. A ficha pode ser preenchida e emitida
-                    normalmente, mas as seções não terão rascunho automático.
+                  <Alert tone="info">
+                    Sem plantões em {formatMonthLabel(monthKey)} — a ficha pode ser
+                    preenchida à mão, mas sem rascunho automático.
                   </Alert>
                 </div>
               )}

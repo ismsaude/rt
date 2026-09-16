@@ -7,7 +7,7 @@ import {
   calcAge, formatDate, formatDateTime, MESES, toDate, toISODate,
 } from '../../lib/format';
 import { CLINICAL_EVENT_TYPES, formatCouncil, SOCIAL_EVENT_TYPES } from '../../lib/clinical';
-import { Alert, Badge, Button, MonthPicker, Signature, useToast } from '../ui';
+import { Alert, Badge, Button, Disclosure, MonthPicker, Signature, useToast } from '../ui';
 import CloneSheetModal from './CloneSheetModal';
 import SignatureModal from '../SignatureModal';
 
@@ -293,30 +293,42 @@ export default function MonthlySheet({
   return (
     <div>
       <div className="sheet-toolbar print-hide">
-        <div className="u-row u-gap-2 u-wrap">
+        <div className="u-row u-gap-3 u-wrap">
           {record ? (
-            <Badge tone="success" dot>
-              Salva em {formatDateTime(record.updated_at)}
-            </Badge>
+            <Badge tone="success" dot>Salva em {formatDateTime(record.updated_at)}</Badge>
           ) : (
             <Badge tone="neutral" dot>Ainda não salva</Badge>
           )}
+          {assinatura && <Badge tone="primary" dot>Assinada</Badge>}
+
+          <Disclosure title="Como usar">
+            Clique em qualquer trecho da ficha para editar. Os botões{' '}
+            <strong>Gerar rascunho</strong> preenchem a seção a partir do que já
+            está registrado no sistema — revise antes de emitir.{' '}
+            <strong>Gerar relatório assinado</strong> confirma sua senha, salva a
+            ficha e abre a impressão: escolha <em>Salvar como PDF</em> no destino.{' '}
+            <strong>Copiar para outros</strong> leva as seções da casa para os
+            demais moradores do mesmo mês.
+          </Disclosure>
         </div>
+
         <div className="u-row u-gap-2">
           <Button
-            variant="ghost" icon={Copy}
+            variant="ghost" size="sm" icon={Copy}
             onClick={() => setCloneOpen(true)}
             disabled={!schemaOk || residents.length < 2}
           >
             Copiar para outros
           </Button>
-          <Button variant="secondary" icon={Save} onClick={save} loading={saving} disabled={!schemaOk}>
-            Salvar ficha
+          <Button
+            variant="secondary" size="sm" icon={Save}
+            onClick={() => save()} loading={saving} disabled={!schemaOk}
+          >
+            Salvar
           </Button>
           <Button
-            variant="primary" icon={PenLine}
-            onClick={() => setSignOpen(true)}
-            disabled={!schemaOk}
+            variant="primary" size="sm" icon={PenLine}
+            onClick={() => setSignOpen(true)} disabled={!schemaOk}
           >
             Gerar relatório assinado
           </Button>
@@ -332,15 +344,6 @@ export default function MonthlySheet({
           </Alert>
         </div>
       )}
-
-      <div className="print-hide" style={{ maxWidth: 820, margin: '0 auto var(--space-4)' }}>
-        <Alert tone="info">
-          Clique em qualquer trecho para editar. Os botões{' '}
-          <strong>Gerar rascunho</strong> preenchem a seção a partir dos dados já
-          registrados no sistema — revise sempre antes de emitir. Para o PDF, use
-          “Gerar PDF” e escolha <em>Salvar como PDF</em> no destino da impressão.
-        </Alert>
-      </div>
 
       {/* ==================== A FICHA ==================== */}
       <article className="sheet">

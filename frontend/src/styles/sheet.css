@@ -136,8 +136,11 @@
   gap: var(--space-3);
   flex-wrap: wrap;
   max-width: 820px;
-  margin: 0 auto var(--space-4);
+  margin: 0 auto var(--space-3);
 }
+
+/* A ajuda aberta ocupa a largura toda, abaixo dos botões */
+.sheet-toolbar .disclosure[open] { flex-basis: 100%; }
 
 /* ------------------------------------------------------------
    IMPRESSÃO — a ficha vira a página inteira
