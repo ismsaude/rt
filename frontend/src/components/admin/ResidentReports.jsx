@@ -314,6 +314,8 @@ export default function ResidentReports({ currentUser }) {
                 <MonthlySheet
                   resident={resident}
                   monthKey={monthKey}
+                  onMonthChange={setMonthKey}
+                  months={months}
                   summary={summary}
                   events={events}
                   incidents={incidents}

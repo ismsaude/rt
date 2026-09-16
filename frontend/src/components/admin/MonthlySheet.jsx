@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Printer, Save, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
-import { calcAge, formatDate, formatDateTime, MESES, toDate, toISODate } from '../../lib/format';
+import {
+  calcAge, formatDate, formatDateTime, formatMonthLabel, MESES, toDate, toISODate,
+} from '../../lib/format';
 import { CLINICAL_EVENT_TYPES, formatCouncil, SOCIAL_EVENT_TYPES } from '../../lib/clinical';
 import { Alert, Badge, Button, useToast } from '../ui';
 
@@ -51,7 +53,9 @@ function AutoTextarea({ value, onChange, placeholder, minRows = 2 }) {
   );
 }
 
-export default function MonthlySheet({ resident, monthKey, summary, events, incidents, currentUser }) {
+export default function MonthlySheet({
+  resident, monthKey, onMonthChange, months = [], summary, events, incidents, currentUser,
+}) {
   const toast = useToast();
 
   const [form, setForm] = useState(EMPTY);
@@ -356,7 +360,23 @@ export default function MonthlySheet({ resident, monthKey, summary, events, inci
           <div className="sheet__meta-row">
             <div className="sheet__meta-item">
               <span className="sheet__meta-label">PERÍODO DE REFERÊNCIA:</span>
-              <span className="sheet__meta-value">{periodo}</span>
+
+              {/* Trocar o período aqui troca também o mês consolidado:
+                  a ficha não pode declarar um mês e exibir os números
+                  de outro. */}
+              <span className="sheet__meta-value print-hide">
+                <select
+                  className="sheet-select"
+                  value={monthKey}
+                  onChange={(e) => onMonthChange?.(e.target.value)}
+                  aria-label="Período de referência da ficha"
+                >
+                  {months.map((m) => (
+                    <option key={m} value={m}>{formatMonthLabel(m)}</option>
+                  ))}
+                </select>
+              </span>
+              <span className="sheet__meta-value print-only">{periodo}</span>
             </div>
           </div>
         </div>

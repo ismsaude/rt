@@ -6,6 +6,8 @@ import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import { formatDateTime, toISODate } from '../../lib/format';
 import { NURSING_PROCEDURES, NURSING_SHIFTS } from '../../lib/clinical';
+import { saveIncidents } from '../../lib/incidents';
+import IncidentsSection from '../IncidentsSection';
 import {
   Alert, Avatar, Badge, Button, Card, CardBody, CardHeader, ChipGroup,
   EmptyState, PageHeader, SelectField, SkeletonList, TextareaField, useToast,
@@ -32,6 +34,7 @@ export default function NursingReport({ currentUser }) {
   const [content, setContent] = useState('');
   const [procedures, setProcedures] = useState([]);
   const [residentNotes, setResidentNotes] = useState({});
+  const [incidents, setIncidents] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,20 +75,21 @@ export default function NursingReport({ currentUser }) {
         .filter(([, txt]) => txt)
     );
 
-    const { error } = await supabase.from('NursingReport').insert([{
+    const agora = new Date().toISOString();
+
+    const { data: saved, error } = await supabase.from('NursingReport').insert([{
       id: uid(),
-      date: new Date().toISOString(),
+      date: agora,
       shift,
       content: content.trim(),
       procedures,
       resident_notes: notes,
       author_id: currentUser?.id || null,
       author_name: currentUser?.name || 'Enfermagem',
-    }]);
-
-    setSaving(false);
+    }]).select();
 
     if (error) {
+      setSaving(false);
       toast.error(
         /does not exist|schema cache/i.test(error.message || '')
           ? 'A tabela NursingReport ainda não existe no banco. Rode a migração 006.'
@@ -94,10 +98,30 @@ export default function NursingReport({ currentUser }) {
       return;
     }
 
+    // As intercorrências viram registros próprios, ligados a este
+    // relatório e a cada morador envolvido.
+    const { error: incError } = await saveIncidents(incidents, {
+      residents,
+      author: { id: currentUser?.id, name: currentUser?.name || 'Enfermagem' },
+      occurredAt: agora,
+      sourceId: saved?.[0]?.id || null,
+    });
+
+    setSaving(false);
+
+    if (incError) {
+      toast.error(
+        `O relatório foi salvo, mas as intercorrências falharam: ${incError.message}. ` +
+        'Avise a supervisão antes de sair.'
+      );
+      return;
+    }
+
     setSent(true);
     setContent('');
     setProcedures([]);
     setResidentNotes({});
+    setIncidents([]);
     load();
   };
 
@@ -205,8 +229,16 @@ export default function NursingReport({ currentUser }) {
           </CardBody>
         </Card>
 
+        <IncidentsSection
+          incidents={incidents}
+          onChange={setIncidents}
+          residents={residents}
+        />
+
         <Button variant="primary" size="xl" block icon={Send} onClick={submit} loading={saving}>
           Enviar relatório
+          {incidents.length > 0 &&
+            ` e ${incidents.length === 1 ? '1 intercorrência' : `${incidents.length} intercorrências`}`}
         </Button>
       </div>
 

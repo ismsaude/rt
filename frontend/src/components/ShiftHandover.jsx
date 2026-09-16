@@ -1,20 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, CheckCircle2, ChevronDown, ClipboardEdit, History,
-  PenLine, Plus, Send, ShieldCheck, Siren, Trash2, User,
+  PenLine, Send, ShieldCheck, User,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { uid } from '../lib/id';
 import { formatDateTime } from '../lib/format';
 import {
   Alert, Avatar, Badge, Button, Card, CardBody, CardHeader, ChipGroup,
   EmptyState, Modal, PageHeader, SelectField, SkeletonList, TextareaField,
-  TextField, useConfirm, useToast,
+  TextField, useToast,
 } from './ui';
-import {
-  BEHAVIOR_NONE, BEHAVIOR_OPTIONS, behaviorTone, INCIDENT_SEVERITIES,
-  INCIDENT_TYPES, NOTIFY_OPTIONS, severityTone,
-} from '../lib/clinical';
+import { BEHAVIOR_NONE, BEHAVIOR_OPTIONS, behaviorTone } from '../lib/clinical';
+import { saveIncidents } from '../lib/incidents';
+import IncidentsSection from './IncidentsSection';
 
 /* Os rótulos abaixo são gravados no prontuário. Alterá-los muda o
    histórico: o classificador em lib/shiftReports.js normaliza as
@@ -31,19 +29,9 @@ const blankEntry = () => ({
   notes: '',
 });
 
-const blankIncident = () => ({
-  key: uid(),
-  type: INCIDENT_TYPES[0],
-  severity: 'Leve',
-  residentIds: [],
-  description: '',
-  conduct: '',
-  notified: [NOTIFY_OPTIONS[0]],
-});
 
 export default function ShiftHandover({ currentUser }) {
   const toast = useToast();
-  const confirm = useConfirm();
 
   const [residents, setResidents] = useState([]);
   const [entries, setEntries] = useState({});
@@ -54,8 +42,6 @@ export default function ShiftHandover({ currentUser }) {
   const [history, setHistory] = useState([]);
 
   const [incidents, setIncidents] = useState([]);
-  const [incidentOpen, setIncidentOpen] = useState(false);
-  const [incidentDraft, setIncidentDraft] = useState(blankIncident);
 
   const [signOpen, setSignOpen] = useState(false);
   const [signPassword, setSignPassword] = useState('');
@@ -108,36 +94,6 @@ export default function ShiftHandover({ currentUser }) {
     [entries]
   );
 
-  /* ---------------- Intercorrências ---------------- */
-  const openIncident = () => {
-    setIncidentDraft(blankIncident());
-    setIncidentOpen(true);
-  };
-
-  const addIncident = (e) => {
-    e?.preventDefault();
-
-    if (!incidentDraft.description.trim()) {
-      toast.warning('Descreva o que aconteceu.');
-      return;
-    }
-    if (incidentDraft.residentIds.length === 0) {
-      toast.warning('Selecione ao menos um morador envolvido.');
-      return;
-    }
-    setIncidents((prev) => [...prev, incidentDraft]);
-    setIncidentOpen(false);
-    toast.success('Intercorrência adicionada ao plantão.');
-  };
-
-  const removeIncident = async (key) => {
-    const ok = await confirm({
-      title: 'Remover intercorrência',
-      message: 'Este registro será descartado antes do envio do plantão.',
-      confirmLabel: 'Remover',
-    });
-    if (ok) setIncidents((prev) => prev.filter((i) => i.key !== key));
-  };
 
   const startSigning = () => {
     if (!generalNotes.trim()) {
@@ -193,24 +149,12 @@ export default function ShiftHandover({ currentUser }) {
     // plantão e a cada morador envolvido — é o que permite que o
     // episódio apareça no prontuário de todos eles.
     if (incidents.length > 0) {
-      const rows = incidents.map((inc) => ({
-        id: uid(),
-        occurred_at: now,
-        type: inc.type,
-        severity: inc.severity,
-        description: inc.description.trim(),
-        conduct: inc.conduct.trim(),
-        notified: inc.notified.join(', '),
-        resident_ids: inc.residentIds,
-        resident_names: inc.residentIds.map(
-          (id) => residents.find((r) => r.id === id)?.name || 'Morador'
-        ),
-        reporter_id: currentUser?.id || 'dev-id',
-        reporter_name: currentUser?.name || 'Desenvolvedor',
-        shift_report_id: saved?.[0]?.id || null,
-      }));
-
-      const { error: incError } = await supabase.from('Incident').insert(rows);
+      const { error: incError } = await saveIncidents(incidents, {
+        residents,
+        author: { id: currentUser?.id, name: currentUser?.name || 'Desenvolvedor' },
+        occurredAt: now,
+        sourceId: saved?.[0]?.id || null,
+      });
       if (incError) {
         setSaving(false);
         setSignError(
@@ -358,71 +302,11 @@ export default function ShiftHandover({ currentUser }) {
             );
           })}
 
-          <Card accent={incidents.length > 0 ? 'danger' : undefined}>
-            <CardHeader
-              icon={Siren}
-              title="Intercorrências"
-              subtitle="Quedas, agressões, crises, evasão — registre cada episódio."
-              actions={
-                <Button variant="secondary" size="sm" icon={Plus} onClick={openIncident}>
-                  Registrar
-                </Button>
-              }
-            />
-            <CardBody>
-              {incidents.length === 0 ? (
-                <p className="u-muted" style={{ fontSize: 'var(--text-md)' }}>
-                  Nenhuma intercorrência neste plantão. Se algo aconteceu com algum
-                  morador, registre aqui — assim o episódio entra no prontuário de
-                  cada envolvido, e não apenas no relato da casa.
-                </p>
-              ) : (
-                <div className="u-stack u-gap-3">
-                  {incidents.map((inc) => (
-                    <div
-                      key={inc.key}
-                      style={{
-                        padding: 'var(--space-3)',
-                        border: '1px solid var(--border)',
-                        borderLeft: `3px solid var(--${severityTone(inc.severity) === 'danger' ? 'danger' : 'warning'})`,
-                        borderRadius: 'var(--radius-md)',
-                      }}
-                    >
-                      <div className="u-between u-gap-3" style={{ marginBottom: 'var(--space-2)' }}>
-                        <div className="u-row u-wrap u-gap-2">
-                          <Badge tone={severityTone(inc.severity)} icon={Siren}>{inc.type}</Badge>
-                          <Badge tone={severityTone(inc.severity)}>{inc.severity}</Badge>
-                        </div>
-                        <Button
-                          variant="danger-ghost" size="sm" iconOnly icon={Trash2}
-                          onClick={() => removeIncident(inc.key)}
-                          aria-label="Remover intercorrência"
-                        />
-                      </div>
-
-                      <div className="u-row u-wrap u-gap-1" style={{ marginBottom: 'var(--space-2)' }}>
-                        {inc.residentIds.map((id) => (
-                          <Badge key={id} tone="neutral">
-                            {residents.find((r) => r.id === id)?.name || 'Morador'}
-                          </Badge>
-                        ))}
-                      </div>
-
-                      <p style={{ fontSize: 'var(--text-md)' }}>{inc.description}</p>
-                      {inc.conduct && (
-                        <p className="u-muted" style={{ fontSize: 'var(--text-sm)', marginTop: 'var(--space-2)' }}>
-                          <strong>Conduta:</strong> {inc.conduct}
-                        </p>
-                      )}
-                      <p className="u-subtle" style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--space-1)' }}>
-                        Comunicado a: {inc.notified.join(', ')}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardBody>
-          </Card>
+          <IncidentsSection
+            incidents={incidents}
+            onChange={setIncidents}
+            residents={residents}
+          />
 
           <Card accent="warning">
             <CardHeader
@@ -538,95 +422,6 @@ export default function ShiftHandover({ currentUser }) {
           </div>
         )}
       </section>
-
-      {/* --------------------- Registro de intercorrência --------------------- */}
-      <Modal
-        open={incidentOpen}
-        onClose={() => setIncidentOpen(false)}
-        title="Registrar intercorrência"
-        description="Este episódio entrará no prontuário de cada morador envolvido."
-        size="lg"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setIncidentOpen(false)}>Cancelar</Button>
-            <Button variant="primary" icon={Siren} onClick={addIncident}>Adicionar</Button>
-          </>
-        }
-      >
-        <form onSubmit={addIncident} className="u-stack u-gap-5">
-          <div className="field-row">
-            <SelectField
-              label="Tipo" required
-              value={incidentDraft.type}
-              onChange={(e) => setIncidentDraft((d) => ({ ...d, type: e.target.value }))}
-            >
-              {INCIDENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </SelectField>
-
-            <SelectField
-              label="Gravidade" required
-              hint={INCIDENT_SEVERITIES.find((x) => x.value === incidentDraft.severity)?.hint}
-              value={incidentDraft.severity}
-              onChange={(e) => setIncidentDraft((d) => ({ ...d, severity: e.target.value }))}
-            >
-              {INCIDENT_SEVERITIES.map((x) => <option key={x.value} value={x.value}>{x.value}</option>)}
-            </SelectField>
-          </div>
-
-          <div>
-            <span className="field__label" style={{ marginBottom: 'var(--space-2)' }}>
-              Moradores envolvidos <span className="field__required">*</span>
-            </span>
-            <ChipGroup
-              ariaLabel="Moradores envolvidos"
-              options={residents.map((r) => ({ value: r.name, tone: 'primary' }))}
-              value={incidentDraft.residentIds.map(
-                (id) => residents.find((r) => r.id === id)?.name
-              ).filter(Boolean)}
-              onChange={(names) =>
-                setIncidentDraft((d) => ({
-                  ...d,
-                  residentIds: names
-                    .map((n) => residents.find((r) => r.name === n)?.id)
-                    .filter(Boolean),
-                }))
-              }
-            />
-            <span className="field__hint" style={{ display: 'block', marginTop: 'var(--space-2)' }}>
-              Marque todos os que participaram, inclusive quem sofreu e quem causou.
-            </span>
-          </div>
-
-          <TextareaField
-            label="O que aconteceu" required
-            placeholder="Descreva o episódio: onde, quando, como começou e como terminou."
-            rows={4}
-            value={incidentDraft.description}
-            onChange={(e) => setIncidentDraft((d) => ({ ...d, description: e.target.value }))}
-          />
-
-          <TextareaField
-            label="Conduta adotada"
-            hint="O que a equipe fez em seguida."
-            placeholder="Ex.: separei os dois, conversei individualmente, apliquei medicação SOS conforme prescrição…"
-            rows={3}
-            value={incidentDraft.conduct}
-            onChange={(e) => setIncidentDraft((d) => ({ ...d, conduct: e.target.value }))}
-          />
-
-          <div>
-            <span className="field__label" style={{ marginBottom: 'var(--space-2)' }}>
-              Comunicado a
-            </span>
-            <ChipGroup
-              ariaLabel="Quem foi comunicado"
-              options={NOTIFY_OPTIONS}
-              value={incidentDraft.notified}
-              onChange={(next) => setIncidentDraft((d) => ({ ...d, notified: next }))}
-            />
-          </div>
-        </form>
-      </Modal>
 
       {/* --------------------- Assinatura eletrônica --------------------- */}
       <Modal
