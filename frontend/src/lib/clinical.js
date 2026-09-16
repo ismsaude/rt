@@ -102,3 +102,40 @@ export function suggestAutonomy(counts, total) {
   if (pct <= 0.5) return 'Semi-dependente';
   return 'Dependente';
 }
+
+/* ------------------------------------------------------------------
+   Conselhos de classe
+   O registro sai impresso na assinatura da ficha mensal, documento
+   lido pela vigilância sanitária — por isso é estruturado.
+   ------------------------------------------------------------------ */
+export const PROFESSIONAL_COUNCILS = [
+  { value: 'CRESS',   label: 'CRESS — Serviço Social' },
+  { value: 'COREN',   label: 'COREN — Enfermagem' },
+  { value: 'CRM',     label: 'CRM — Medicina' },
+  { value: 'CRP',     label: 'CRP — Psicologia' },
+  { value: 'CRN',     label: 'CRN — Nutrição' },
+  { value: 'CREFITO', label: 'CREFITO — Fisioterapia e T.O.' },
+  { value: 'CRF',     label: 'CRF — Farmácia' },
+  { value: 'Outro',   label: 'Outro conselho' },
+];
+
+export const UFS = [
+  'AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS',
+  'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC',
+  'SE', 'SP', 'TO',
+];
+
+/**
+ * Monta o registro como ele aparece na assinatura.
+ * Ex.: { COREN, 123456, SP } → "COREN-SP 123456"
+ *      { CRESS, 50.834 }     → "CRESS 50.834"
+ */
+export function formatCouncil({ professional_council, professional_id, professional_uf } = {}) {
+  if (!professional_id) return '';
+  const sigla = professional_council
+    ? professional_uf
+      ? `${professional_council}-${professional_uf}`
+      : professional_council
+    : '';
+  return [sigla, professional_id].filter(Boolean).join(' ');
+}

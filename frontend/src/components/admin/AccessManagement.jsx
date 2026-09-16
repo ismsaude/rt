@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
+import { formatCouncil, PROFESSIONAL_COUNCILS, UFS } from '../../lib/clinical';
 import {
   Alert, Avatar, Badge, Button, Card, EmptyState, Modal, PageHeader,
   SelectField, SkeletonList, Table, TextField, useConfirm, useToast,
@@ -18,7 +19,13 @@ const ROLES = [
 
 const roleMeta = (value) => ROLES.find((r) => r.value === value) || ROLES[0];
 
-const EMPTY = { name: '', cpf: '', email: '', password: '', role: 'CUIDADOR', job_title: '', professional_id: '' };
+const EMPTY = {
+  name: '', cpf: '', email: '', password: '', role: 'CUIDADOR',
+  job_title: '', professional_council: '', professional_id: '', professional_uf: '',
+};
+
+/** Perfis que exercem profissão regulamentada por conselho. */
+const ROLES_COM_CONSELHO = ['ENFERMEIRO', 'ADMIN', 'DIRETOR'];
 
 export default function AccessManagement({ currentUser }) {
   const toast = useToast();
@@ -66,7 +73,9 @@ export default function AccessManagement({ currentUser }) {
       password: '',
       role: user.role || 'CUIDADOR',
       job_title: user.job_title || '',
+      professional_council: user.professional_council || '',
       professional_id: user.professional_id || '',
+      professional_uf: user.professional_uf || '',
     });
     setEditingId(user.id);
     setShowPassword(false);
@@ -93,7 +102,9 @@ export default function AccessManagement({ currentUser }) {
       email: form.email.trim().toLowerCase(),
       role: form.role,
       job_title: form.job_title.trim(),
+      professional_council: form.professional_council,
       professional_id: form.professional_id.trim(),
+      professional_uf: form.professional_uf,
       updatedAt: new Date().toISOString(),
     };
     // Só grava a senha quando o campo foi preenchido.
@@ -178,6 +189,7 @@ export default function AccessManagement({ currentUser }) {
               <th>Funcionário</th>
               <th>Acesso</th>
               <th>Perfil</th>
+              <th>Registro</th>
               <th style={{ textAlign: 'right' }}>Ações</th>
             </tr>
           </thead>
@@ -203,6 +215,9 @@ export default function AccessManagement({ currentUser }) {
                     <Badge tone={meta.tone} icon={protectedAccount ? Shield : undefined}>
                       {meta.label}
                     </Badge>
+                  </td>
+                  <td className="table__cell-muted">
+                    {formatCouncil(user) || '—'}
                   </td>
                   <td>
                     <div className="table__actions">
@@ -270,20 +285,55 @@ export default function AccessManagement({ currentUser }) {
             {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </SelectField>
 
-          <div className="field-row">
-            <TextField
-              label="Cargo na assinatura"
-              hint="Ex.: Supervisora Residência Terapêutica"
-              value={form.job_title}
-              onChange={(e) => setForm((f) => ({ ...f, job_title: e.target.value }))}
-            />
-            <TextField
-              label="Registro profissional"
-              hint="Ex.: CRESS 50.834, COREN-SP 123456"
-              value={form.professional_id}
-              onChange={(e) => setForm((f) => ({ ...f, professional_id: e.target.value }))}
-            />
-          </div>
+          <TextField
+            label="Cargo na assinatura"
+            hint="Como aparece nos documentos. Ex.: Supervisora Residência Terapêutica"
+            value={form.job_title}
+            onChange={(e) => setForm((f) => ({ ...f, job_title: e.target.value }))}
+          />
+
+          {ROLES_COM_CONSELHO.includes(form.role) && (
+            <div>
+              <p className="divider-label" style={{ marginBottom: 'var(--space-3)' }}>
+                Conselho de classe
+              </p>
+              <div className="field-row">
+                <SelectField
+                  label="Conselho"
+                  value={form.professional_council}
+                  onChange={(e) => setForm((f) => ({ ...f, professional_council: e.target.value }))}
+                >
+                  <option value="">Não informado</option>
+                  {PROFESSIONAL_COUNCILS.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </SelectField>
+
+                <TextField
+                  label="Número da inscrição"
+                  placeholder="50.834"
+                  value={form.professional_id}
+                  onChange={(e) => setForm((f) => ({ ...f, professional_id: e.target.value }))}
+                />
+
+                <SelectField
+                  label="UF"
+                  hint="Quando o conselho for regional"
+                  value={form.professional_uf}
+                  onChange={(e) => setForm((f) => ({ ...f, professional_uf: e.target.value }))}
+                >
+                  <option value="">—</option>
+                  {UFS.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+                </SelectField>
+              </div>
+
+              {formatCouncil(form) && (
+                <span className="field__hint" style={{ display: 'block', marginTop: 'var(--space-2)' }}>
+                  Sairá na assinatura como: <strong>{formatCouncil(form)}</strong>
+                </span>
+              )}
+            </div>
+          )}
 
           <TextField
             label={editingId ? 'Nova senha (opcional)' : 'Senha inicial'}

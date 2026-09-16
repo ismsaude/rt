@@ -3,7 +3,7 @@ import { Printer, Save, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import { calcAge, formatDate, formatDateTime, MESES, toDate } from '../../lib/format';
-import { CLINICAL_EVENT_TYPES, SOCIAL_EVENT_TYPES } from '../../lib/clinical';
+import { CLINICAL_EVENT_TYPES, formatCouncil, SOCIAL_EVENT_TYPES } from '../../lib/clinical';
 import { Alert, Badge, Button, useToast } from '../ui';
 
 const AUTONOMY_LEVELS = ['Independente', 'Semi-dependente', 'Dependente'];
@@ -448,8 +448,8 @@ export default function MonthlySheet({ resident, monthKey, summary, events, inci
           <div className="sheet__signature-role">
             {currentUser?.job_title || 'Supervisora Residência Terapêutica'}
           </div>
-          {currentUser?.professional_id && (
-            <div className="sheet__signature-role">{currentUser.professional_id}</div>
+          {formatCouncil(currentUser) && (
+            <div className="sheet__signature-role">{formatCouncil(currentUser)}</div>
           )}
         </div>
       </article>
