@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, PenLine, Save, Sparkles } from 'lucide-react';
+import { Copy, PenLine, RotateCcw, Save, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import {
@@ -279,6 +279,11 @@ export default function MonthlySheet({
 
   if (!resident) return null;
 
+  const divergeDoCadastro =
+    (form.autonomia_higiene || '') !== (resident.autonomy_hygiene || '') ||
+    (form.autonomia_alimentacao || '') !== (resident.autonomy_food || '') ||
+    (form.autonomia_atividades || '') !== (resident.autonomy_activities || '');
+
   const idade = calcAge(resident.dateOfBirth);
 
   return (
@@ -465,7 +470,25 @@ export default function MonthlySheet({
         </section>
 
         <section className="sheet__section">
-          <h2 className="sheet__section-title">NÍVEL DE AUTONOMIA</h2>
+          <h2 className="sheet__section-title">
+            NÍVEL DE AUTONOMIA
+            <Button
+              variant="ghost" size="sm" icon={RotateCcw}
+              className="print-hide"
+              style={{ marginLeft: 'var(--space-2)', verticalAlign: 'middle' }}
+              onClick={() => {
+                setForm((f) => ({
+                  ...f,
+                  autonomia_higiene: resident.autonomy_hygiene || '',
+                  autonomia_alimentacao: resident.autonomy_food || '',
+                  autonomia_atividades: resident.autonomy_activities || '',
+                }));
+                toast.success(`Autonomia recarregada do cadastro de ${resident.name}.`);
+              }}
+            >
+              Usar o cadastro
+            </Button>
+          </h2>
           <div className="sheet__autonomy">
             {[
               ['Higiene pessoal:', 'autonomia_higiene'],
@@ -481,6 +504,20 @@ export default function MonthlySheet({
               </div>
             ))}
           </div>
+
+          {divergeDoCadastro && (
+            <div className="print-hide" style={{ marginTop: 'var(--space-3)' }}>
+              <Alert tone="warning">
+                Estes valores diferem do que está cadastrado para {resident.name}
+                {' '}({[
+                  resident.autonomy_hygiene,
+                  resident.autonomy_food,
+                  resident.autonomy_activities,
+                ].filter(Boolean).join(' · ') || 'não avaliado'}).
+                Se a autonomia mudou, atualize também a Central de Cadastros.
+              </Alert>
+            </div>
+          )}
         </section>
 
         <section className="sheet__section">

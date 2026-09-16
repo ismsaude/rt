@@ -40,12 +40,6 @@ export const SHEET_SECTIONS = [
     hint: 'Depende da medicação e da resposta de cada morador.',
     individual: true,
   },
-  {
-    key: 'autonomia',
-    label: 'Nível de autonomia',
-    hint: 'Higiene, alimentação e atividades — específico de cada um.',
-    individual: true,
-  },
 ];
 
 /** Seções marcadas por padrão: apenas as que não descrevem a pessoa. */
@@ -58,6 +52,12 @@ const CAMPOS_AUTONOMIA = [
   'autonomia_alimentacao',
   'autonomia_atividades',
 ];
+
+/*
+ * O nível de autonomia não entra na cópia, de propósito: é atributo do
+ * morador, mantido na Central de Cadastros, e copiá-lo entre prontuários
+ * afirma sobre uma pessoa o que foi observado em outra.
+ */
 
 /** Fichas já existentes de um mês, por morador. */
 export async function loadMonthSheets(monthKey) {
@@ -91,13 +91,7 @@ export async function cloneSheet({ origem, sections, destinos, monthKey, author 
   const { porMorador } = await loadMonthSheets(monthKey);
 
   const recorte = {};
-  sections.forEach((key) => {
-    if (key === 'autonomia') {
-      CAMPOS_AUTONOMIA.forEach((c) => { recorte[c] = origem[c] || ''; });
-    } else {
-      recorte[key] = origem[key] || '';
-    }
-  });
+  sections.forEach((key) => { recorte[key] = origem[key] || ''; });
 
   const erros = [];
   let ok = 0;
