@@ -1122,13 +1122,16 @@ body:has(.bottom-nav) { --toast-offset: var(--bottomnav-height); }
 
 .signature__mark {
   font-family: 'Caveat', 'Segoe Script', cursive;
-  font-size: 2.1rem;
-  font-weight: 600;
-  line-height: 1.1;
-  color: var(--gray-900);
-  padding: 0 var(--space-4) var(--space-1);
-  border-bottom: 1px solid var(--gray-900);
-  min-width: 240px;
+  font-size: 1.5rem;
+  /* Sem negrito: a Caveat em peso alto engrossa demais e a assinatura
+     passa a competir com os títulos do documento. */
+  font-weight: 500;
+  line-height: 1.2;
+  /* Azul de caneta, como uma assinatura de próprio punho. */
+  color: var(--assinatura-tinta, #1A3E72);
+  padding: 0 var(--space-4) 2px;
+  border-bottom: 1px solid var(--gray-400);
+  min-width: 200px;
   max-width: 100%;
   word-break: break-word;
 }
@@ -1153,14 +1156,20 @@ body:has(.bottom-nav) { --toast-offset: var(--bottomnav-height); }
 /* Bloco compacto, para listas e históricos */
 .signature--inline { flex-direction: row; align-items: center; gap: var(--space-3); padding: 0; text-align: left; }
 .signature--inline .signature__mark {
-  font-size: 1.3rem;
+  font-size: 1.1rem;
   border-bottom: none;
   min-width: 0;
   padding: 0;
 }
 
 @media print {
-  .signature__mark { color: #000; border-bottom-color: #000; }
+  .signature__mark {
+    /* A tinta azul precisa sair na impressão, senão a assinatura
+       vira texto preto igual ao resto do documento. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    border-bottom-color: #666;
+  }
   .signature__stamp { color: #444; }
 }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, PenLine, RotateCcw, Save, Sparkles } from 'lucide-react';
+import { Copy, Lock, LockOpen, PenLine, Printer, RotateCcw, Save, Sparkles } from 'lucide-react';
 import { buildObservacoes } from '../../lib/monthlyReport';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
@@ -7,7 +7,9 @@ import {
   calcAge, formatDate, formatDateTime, MESES, toDate, toISODate,
 } from '../../lib/format';
 import { CLINICAL_EVENT_TYPES, formatCouncil, SOCIAL_EVENT_TYPES } from '../../lib/clinical';
-import { Alert, Badge, Button, Disclosure, MonthPicker, Signature, useToast } from '../ui';
+import {
+  Alert, Badge, Button, Disclosure, MonthPicker, Signature, useConfirm, useToast,
+} from '../ui';
 import CloneSheetModal from './CloneSheetModal';
 import SheetPhotos from './SheetPhotos';
 import SignatureModal from '../SignatureModal';
@@ -37,7 +39,7 @@ function isMissingColumn(error) {
 }
 
 /** Textarea que cresce com o conteúdo — evita barra de rolagem no PDF. */
-function AutoTextarea({ value, onChange, placeholder, minRows = 2 }) {
+function AutoTextarea({ value, onChange, placeholder, minRows = 2, readOnly = false }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -53,8 +55,10 @@ function AutoTextarea({ value, onChange, placeholder, minRows = 2 }) {
       className="sheet-edit"
       rows={minRows}
       value={value}
-      placeholder={placeholder}
+      placeholder={readOnly ? '' : placeholder}
       onChange={onChange}
+      readOnly={readOnly}
+      tabIndex={readOnly ? -1 : undefined}
     />
   );
 }
@@ -64,6 +68,7 @@ export default function MonthlySheet({
   residents = [], currentUser,
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
 
   const [form, setForm] = useState(EMPTY);
   const [record, setRecord] = useState(null);
@@ -72,6 +77,12 @@ export default function MonthlySheet({
   const [cloneOpen, setCloneOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [assinatura, setAssinatura] = useState(null);
+
+  /* Ficha assinada não se altera: o texto impresso precisa ser
+     exatamente o que foi assinado. Só o acesso de desenvolvimento
+     destrava, e destravar apaga a assinatura — ver destravar(). */
+  const ehDesenvolvedor = currentUser?.email === 'dev@aurean.com';
+  const travada = !!assinatura;
 
   const [year, month] = monthKey.split('-').map(Number);
   const periodo = `${MESES[month - 1]} de ${year}`;
@@ -117,6 +128,34 @@ export default function MonthlySheet({
   useEffect(() => { load(); }, [load]);
 
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  const destravar = async () => {
+    const ok = await confirm({
+      title: 'Destravar a ficha',
+      message: `A assinatura de ${assinatura.signed_by_name} será removida e a ficha volta a ser editável.`,
+      warning:
+        'Um documento não pode ser alterado depois de assinado sem que a assinatura caia junto — ' +
+        'senão passaria a afirmar algo que ninguém assinou. Após editar, será preciso assinar de novo.',
+      confirmLabel: 'Destravar e remover assinatura',
+    });
+    if (!ok) return;
+
+    const limpo = {
+      signed_by_name: null, signed_by_role: null, signed_council: null,
+      signed_at: null, signed_ip: null, signed_device: null,
+    };
+
+    const { error } = await supabase
+      .from('MonthlyReport').update(limpo).eq('id', record.id);
+
+    if (error) {
+      toast.error('Não foi possível destravar a ficha.');
+      return;
+    }
+    setAssinatura(null);
+    toast.success('Ficha destravada. A assinatura foi removida.');
+    load();
+  };
 
   /* ---------------- Rascunhos a partir dos dados ---------------- */
 
@@ -302,7 +341,11 @@ export default function MonthlySheet({
           ) : (
             <Badge tone="neutral" dot>Ainda não salva</Badge>
           )}
-          {assinatura && <Badge tone="primary" dot>Assinada</Badge>}
+          {travada && (
+            <Badge tone="primary" icon={Lock}>
+              Assinada — somente leitura
+            </Badge>
+          )}
 
           <Disclosure title="Como usar">
             Clique em qualquer trecho da ficha para editar. Os botões{' '}
@@ -316,27 +359,54 @@ export default function MonthlySheet({
         </div>
 
         <div className="u-row u-gap-2">
-          <Button
-            variant="ghost" size="sm" icon={Copy}
-            onClick={() => setCloneOpen(true)}
-            disabled={!schemaOk || residents.length < 2}
-          >
-            Copiar para outros
-          </Button>
-          <Button
-            variant="secondary" size="sm" icon={Save}
-            onClick={() => save()} loading={saving} disabled={!schemaOk}
-          >
-            Salvar
-          </Button>
-          <Button
-            variant="primary" size="sm" icon={PenLine}
-            onClick={() => setSignOpen(true)} disabled={!schemaOk}
-          >
-            Gerar relatório assinado
-          </Button>
+          {travada ? (
+            <>
+              {ehDesenvolvedor && (
+                <Button variant="ghost" size="sm" icon={LockOpen} onClick={destravar}>
+                  Destravar
+                </Button>
+              )}
+              <Button variant="primary" size="sm" icon={Printer} onClick={() => window.print()}>
+                Visualizar PDF
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="ghost" size="sm" icon={Copy}
+                onClick={() => setCloneOpen(true)}
+                disabled={!schemaOk || residents.length < 2}
+              >
+                Copiar para outros
+              </Button>
+              <Button
+                variant="secondary" size="sm" icon={Save}
+                onClick={() => save()} loading={saving} disabled={!schemaOk}
+              >
+                Salvar
+              </Button>
+              <Button
+                variant="primary" size="sm" icon={PenLine}
+                onClick={() => setSignOpen(true)} disabled={!schemaOk}
+              >
+                Gerar relatório assinado
+              </Button>
+            </>
+          )}
         </div>
       </div>
+
+      {travada && (
+        <div className="print-hide" style={{ maxWidth: 820, margin: '0 auto var(--space-4)' }}>
+          <Alert tone="info" title="Ficha assinada">
+            O conteúdo não pode mais ser alterado: o documento impresso precisa ser
+            exatamente o que foi assinado por {assinatura.signed_by_name}.
+            {ehDesenvolvedor
+              ? ' Use "Destravar" para editar — a assinatura será removida e a ficha precisará ser assinada de novo.'
+              : ' Para corrigir algo, peça ao responsável técnico do sistema.'}
+          </Alert>
+        </div>
+      )}
 
       {!schemaOk && (
         <div className="print-hide" style={{ maxWidth: 820, margin: '0 auto var(--space-4)' }}>
@@ -373,6 +443,7 @@ export default function MonthlySheet({
                   style={{ minWidth: '9.5rem' }}
                   value={form.emitido_em}
                   onChange={set('emitido_em')}
+                  disabled={travada}
                   aria-label="Data de emissão da ficha"
                 />
               </span>
@@ -426,7 +497,7 @@ export default function MonthlySheet({
             CONDIÇÕES CLÍNICAS E OBSERVAÇÕES
             <Button
               variant="ghost" size="sm" icon={RotateCcw}
-              className="print-hide"
+              className={`print-hide ${travada ? 'u-sr-only' : ''}`}
               style={{ marginLeft: 'var(--space-2)', verticalAlign: 'middle' }}
               onClick={() => {
                 setForm((f) => ({ ...f, observacoes: buildObservacoes(resident) }));
@@ -439,6 +510,7 @@ export default function MonthlySheet({
           <AutoTextarea
             value={form.observacoes}
             onChange={set('observacoes')}
+            readOnly={travada}
             placeholder="Ex.: Morador de 67 anos, diabético, hipertensivo e esquizofrênico."
           />
         </section>
@@ -448,7 +520,7 @@ export default function MonthlySheet({
             INTERVENÇÕES REALIZADAS NO PERÍODO
             <Button
               variant="ghost" size="sm" icon={Sparkles}
-              className="print-hide"
+              className={`print-hide ${travada ? 'u-sr-only' : ''}`}
               style={{ marginLeft: 'var(--space-2)', verticalAlign: 'middle' }}
               onClick={draftIntervencoes}
             >
@@ -458,6 +530,7 @@ export default function MonthlySheet({
           <AutoTextarea
             value={form.intervencoes}
             onChange={set('intervencoes')}
+            readOnly={travada}
             placeholder="Ex.: 02/02: O morador passou por avaliação com a Dra. Camilla Rabuske, médica da família…"
             minRows={3}
           />
@@ -468,7 +541,7 @@ export default function MonthlySheet({
             MUDANÇAS OBSERVADAS NO COMPORTAMENTO
             <Button
               variant="ghost" size="sm" icon={Sparkles}
-              className="print-hide"
+              className={`print-hide ${travada ? 'u-sr-only' : ''}`}
               style={{ marginLeft: 'var(--space-2)', verticalAlign: 'middle' }}
               onClick={draftComportamento}
             >
@@ -478,6 +551,7 @@ export default function MonthlySheet({
           <AutoTextarea
             value={form.comportamento}
             onChange={set('comportamento')}
+            readOnly={travada}
             placeholder="Ex.: Observa-se, por parte da equipe, que o residente apresentou…"
           />
         </section>
@@ -487,7 +561,7 @@ export default function MonthlySheet({
             ADESÃO AO TRATAMENTO
             <Button
               variant="ghost" size="sm" icon={Sparkles}
-              className="print-hide"
+              className={`print-hide ${travada ? 'u-sr-only' : ''}`}
               style={{ marginLeft: 'var(--space-2)', verticalAlign: 'middle' }}
               onClick={draftAdesao}
             >
@@ -497,6 +571,7 @@ export default function MonthlySheet({
           <AutoTextarea
             value={form.adesao}
             onChange={set('adesao')}
+            readOnly={travada}
             placeholder="Ex.: Boa adesão ao tratamento e às medicações."
           />
         </section>
@@ -506,7 +581,7 @@ export default function MonthlySheet({
             NÍVEL DE AUTONOMIA
             <Button
               variant="ghost" size="sm" icon={RotateCcw}
-              className="print-hide"
+              className={`print-hide ${travada ? 'u-sr-only' : ''}`}
               style={{ marginLeft: 'var(--space-2)', verticalAlign: 'middle' }}
               onClick={() => {
                 setForm((f) => ({
@@ -529,7 +604,12 @@ export default function MonthlySheet({
             ].map(([label, field]) => (
               <div className="sheet__autonomy-row" key={field}>
                 <span className="sheet__autonomy-label">{label}</span>
-                <select className="sheet-select" value={form[field]} onChange={set(field)}>
+                <select
+                  className="sheet-select"
+                  value={form[field]}
+                  onChange={set(field)}
+                  disabled={travada}
+                >
                   <option value="">—</option>
                   {AUTONOMY_LEVELS.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
                 </select>
@@ -557,7 +637,7 @@ export default function MonthlySheet({
             INTERAÇÕES SOCIAIS E FAMILIARES
             <Button
               variant="ghost" size="sm" icon={Sparkles}
-              className="print-hide"
+              className={`print-hide ${travada ? 'u-sr-only' : ''}`}
               style={{ marginLeft: 'var(--space-2)', verticalAlign: 'middle' }}
               onClick={draftInteracoes}
             >
@@ -567,6 +647,7 @@ export default function MonthlySheet({
           <AutoTextarea
             value={form.interacoes}
             onChange={set('interacoes')}
+            readOnly={travada}
             placeholder="Ex.: Neste mês foi realizado festividade de carnaval e churrasco para comemoração do aniversariante do mês."
           />
         </section>
@@ -576,6 +657,7 @@ export default function MonthlySheet({
           onChange={(photos) => setForm((f) => ({ ...f, photos }))}
           residentId={resident.id}
           monthKey={monthKey}
+          readOnly={travada}
         />
 
         <div className="sheet__signature">

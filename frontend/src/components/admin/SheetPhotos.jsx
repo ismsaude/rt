@@ -12,7 +12,7 @@ import { useConfirm, useToast } from '../ui';
  * moldura: o documento impresso segue como se a seção não existisse.
  * O botão de adicionar só aparece na tela.
  */
-export default function SheetPhotos({ photos, onChange, residentId, monthKey }) {
+export default function SheetPhotos({ photos, onChange, residentId, monthKey, readOnly = false }) {
   const toast = useToast();
   const confirm = useConfirm();
   const input = useRef(null);
@@ -79,6 +79,8 @@ export default function SheetPhotos({ photos, onChange, residentId, monthKey }) 
   // meia largura, para não dominar a página.
   const porLinha = Math.max(total, 2);
 
+  if (vazia && readOnly) return null;
+
   return (
     <section className="sheet__section">
       {!vazia && <h2 className="sheet__section-title">REGISTRO FOTOGRÁFICO</h2>}
@@ -96,28 +98,32 @@ export default function SheetPhotos({ photos, onChange, residentId, monthKey }) 
                   </span>
                 </div>
               )}
-              <button
-                type="button"
-                className="sheet__photo-remove print-hide"
-                onClick={() => remover(foto)}
-                aria-label="Remover foto"
-              >
-                <X size={15} />
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  className="sheet__photo-remove print-hide"
+                  onClick={() => remover(foto)}
+                  aria-label="Remover foto"
+                >
+                  <X size={15} />
+                </button>
+              )}
             </div>
 
             <figcaption>
               <input
                 className="sheet__photo-caption-input"
-                placeholder="Legenda (opcional)"
+                placeholder={readOnly ? '' : 'Legenda (opcional)'}
                 value={foto.caption || ''}
                 onChange={(e) => legendar(foto.path, e.target.value)}
+                readOnly={readOnly}
                 aria-label="Legenda da foto"
               />
             </figcaption>
           </figure>
         ))}
 
+        {!readOnly && (
         <button
           type="button"
           className="sheet__photo-upload print-hide"
@@ -130,6 +136,7 @@ export default function SheetPhotos({ photos, onChange, residentId, monthKey }) 
             reduzidas automaticamente
           </span>
         </button>
+        )}
       </div>
 
       <input

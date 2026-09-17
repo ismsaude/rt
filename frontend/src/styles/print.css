@@ -21,7 +21,9 @@
   body { background: #FFFFFF; font-size: 10.5pt; color: #000; }
 
   /* Cromo da aplicação não vai para o papel */
-  .sidebar, .bottom-nav, .app__header, .shell__topbar,
+  /* Cromo da aplicação: cabeçalho de página, navegação e controles não
+     pertencem ao documento impresso. */
+  .sidebar, .bottom-nav, .app__header, .shell__topbar, .page-header,
   .toast-region, .overlay, .sidebar__scrim,
   .print-hide, .btn, .tabs, .segmented { display: none !important; }
 
