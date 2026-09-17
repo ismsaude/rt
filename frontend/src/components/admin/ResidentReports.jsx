@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, BookOpen, CalendarDays, Check, CheckCircle2, ClipboardList,
   Droplets, Eye, FileText, LayoutDashboard, MessageSquareText, Pill, Printer,
-  CalendarPlus, RefreshCw, Save, Siren, Sparkles, Trash2, User, Utensils,
+  CalendarPlus, PackageCheck, RefreshCw, Save, Siren, Sparkles, Trash2, User, Utensils,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import MonthlySheet from './MonthlySheet';
 import DuplicateMonthModal from './DuplicateMonthModal';
+import MonthClosingModal from './MonthClosingModal';
 import { behaviorTone, severityTone } from '../../lib/clinical';
 import {
   firstName, formatDate, formatDateTime, formatDayMonth, formatMonthLabel,
@@ -51,6 +52,10 @@ export default function ResidentReports({ currentUser }) {
   // Consolidado mensal
   const [monthView, setMonthView] = useState('ficha');
   const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [closingOpen, setClosingOpen] = useState(false);
+  // O fechamento grava direto no banco; remontar a ficha aberta a faz
+  // recarregar o que o lote acabou de escrever.
+  const [sheetKey, setSheetKey] = useState(0);
   const [onlyWritten, setOnlyWritten] = useState(false);
   const [showGeneral, setShowGeneral] = useState(true);
   const [residentId, setResidentId] = useState('');
@@ -230,13 +235,22 @@ export default function ResidentReports({ currentUser }) {
         actions={
           <>
             {tab === 'mensal' && (
-              <Button
-                variant="secondary" icon={CalendarPlus}
-                onClick={() => setDuplicateOpen(true)}
-                className="print-hide"
-              >
-                Duplicar mês
-              </Button>
+              <>
+                <Button
+                  variant="primary" icon={PackageCheck}
+                  onClick={() => setClosingOpen(true)}
+                  className="print-hide"
+                >
+                  Fechar o mês
+                </Button>
+                <Button
+                  variant="secondary" icon={CalendarPlus}
+                  onClick={() => setDuplicateOpen(true)}
+                  className="print-hide"
+                >
+                  Duplicar mês
+                </Button>
+              </>
             )}
             <Button variant="ghost" icon={Printer} onClick={() => window.print()} className="print-hide">
               Imprimir
@@ -338,6 +352,7 @@ export default function ResidentReports({ currentUser }) {
 
               {monthView === 'ficha' && (
                 <MonthlySheet
+                  key={`${resident?.id}-${monthKey}-${sheetKey}`}
                   resident={resident}
                   monthKey={monthKey}
                   onMonthChange={setMonthKey}
@@ -980,6 +995,18 @@ export default function ResidentReports({ currentUser }) {
         residents={residents}
         currentUser={currentUser}
         onDone={(destino) => { setMonthKey(destino); load(); }}
+      />
+
+      <MonthClosingModal
+        open={closingOpen}
+        onClose={() => setClosingOpen(false)}
+        monthKey={monthKey}
+        residents={residents}
+        reports={reports}
+        events={events}
+        incidents={incidents}
+        currentUser={currentUser}
+        onDone={() => setSheetKey((n) => n + 1)}
       />
     </div>
   );

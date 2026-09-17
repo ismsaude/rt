@@ -317,3 +317,21 @@
   .sheet__photos { gap: 4mm; }
   .sheet__photo-frame { border-color: #ccc; }
 }
+
+/* ------------------------------------------------------------
+   IMPRESSÃO EM LOTE
+   O fechamento do mês monta todas as fichas fora do #root e manda
+   imprimir: sai um PDF só, com o mês inteiro, cada morador numa
+   página. Na tela o bloco não existe.
+   ------------------------------------------------------------ */
+.sheet-batch { display: none; }
+
+@media print {
+  body.is-batch-print > #root { display: none !important; }
+  body.is-batch-print > .sheet-batch { display: block !important; }
+
+  .sheet-batch .sheet + .sheet {
+    break-before: page;
+    page-break-before: always;
+  }
+}
