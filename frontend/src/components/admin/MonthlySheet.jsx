@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Copy, Lock, LockOpen, PenLine, Printer, Save } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { CloudOff, Copy, Lock, LockOpen, PenLine, Printer, Save } from 'lucide-react';
 import { buildObservacoes } from '../../lib/monthlyReport';
 import {
   draftAdesao, draftComportamento, draftIntervencoes, draftInteracoes,
@@ -27,6 +27,14 @@ const EMPTY = {
   interacoes: '',
 };
 
+/* Silêncio no teclado que dispara a gravação. Curto o bastante para
+   que nada se perca se o celular travar ou a aba fechar; longo o
+   bastante para não mandar uma escrita por tecla digitada. */
+const ESPERA_ANTES_DE_GRAVAR = 1200;
+
+/** "morador|mês" — identifica a ficha a que um texto pertence. */
+const chaveDaFicha = (residentId, monthKey) => `${residentId}|${monthKey}`;
+
 function isMissingColumn(error) {
   if (!error) return false;
   return (
@@ -45,11 +53,29 @@ export default function MonthlySheet({
 
   const [form, setForm] = useState(EMPTY);
   const [record, setRecord] = useState(null);
-  const [saving, setSaving] = useState(false);
+  /* salvo | editando | salvando | erro — é o que a tarja no alto informa. */
+  const [estado, setEstado] = useState('salvo');
   const [schemaOk, setSchemaOk] = useState(true);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [assinatura, setAssinatura] = useState(null);
+
+  /* ---------------- Gravação contínua ----------------
+     A ficha é prontuário e se escreve aos poucos, quase sempre no
+     celular. Esperar o clique em "Salvar" é apostar que nada acontece
+     no intervalo — aba fechada, bateria no fim, 4G caindo. Então o que
+     for digitado vai para o banco sozinho, pouco depois da última tecla.
+
+     O texto pendente carrega consigo o morador e o mês a que pertence:
+     trocar de ficha no meio da digitação não pode fazer o parágrafo de
+     um morador cair na ficha de outro. */
+  const idsRef = useRef(new Map());   // chave da ficha → id já gravado
+  const baseRef = useRef('');         // o form como está no banco
+  const fichaRef = useRef('');        // a ficha que o form na tela representa
+  const cargaRef = useRef('');        // última carga pedida, contra respostas atrasadas
+  const pendenteRef = useRef(null);   // o que foi digitado e ainda não gravado
+  const filaRef = useRef(Promise.resolve());
+  const avisouFalhaRef = useRef(false);
 
   /* Ficha assinada não se altera: o texto impresso precisa ser
      exatamente o que foi assinado. Só o acesso de desenvolvimento
@@ -64,12 +90,19 @@ export default function MonthlySheet({
   const load = useCallback(async () => {
     if (!resident?.id) return;
 
+    const chave = chaveDaFicha(resident.id, monthKey);
+    cargaRef.current = chave;
+    fichaRef.current = '';   // enquanto carrega, nada na tela vale como texto da ficha
+
     const { data, error } = await supabase
       .from('MonthlyReport')
       .select('*')
       .eq('resident_id', resident.id)
       .eq('month', monthKey)
       .maybeSingle();
+
+    // Resposta de uma ficha que já não está na tela não manda em nada.
+    if (cargaRef.current !== chave) return;
 
     if (isMissingColumn(error)) {
       setSchemaOk(false);
@@ -78,9 +111,11 @@ export default function MonthlySheet({
     setSchemaOk(true);
     setRecord(data || null);
     setAssinatura(data?.signed_by_name ? data : null);
+    idsRef.current.set(chave, data?.id || null);
+
     // Autonomia vem do cadastro do morador quando a ficha do mês
     // ainda não foi preenchida — evita redigitar um dado estável.
-    setForm({
+    const carregado = {
       // Data que sai no documento: a supervisão pode ajustar, já que
       // a ficha nem sempre é emitida no mesmo dia em que foi redigida.
       emitido_em: data?.emitido_em || toISODate(new Date()),
@@ -95,12 +130,165 @@ export default function MonthlySheet({
       autonomia_alimentacao: data?.autonomia_alimentacao || resident.autonomy_food || '',
       autonomia_atividades: data?.autonomia_atividades || resident.autonomy_activities || '',
       interacoes: data?.interacoes || '',
-    });
+    };
+    setForm(carregado);
+    /* O que veio do cadastro ainda não é ficha gravada, mas também não
+       é digitação da supervisão: só grava quando ela escrever algo. */
+    baseRef.current = JSON.stringify(carregado);
+    fichaRef.current = chave;
+    setEstado('salvo');
   }, [resident, monthKey]);
 
   useEffect(() => { load(); }, [load]);
 
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  /* ---------------- Gravação ---------------- */
+  const gravar = useCallback(async function gravar(pendente, assinaturaNova = null) {
+    const { chave, snapshot, resident: r, monthKey: mk } = pendente;
+    const naTela = () => fichaRef.current === chave;
+
+    if (naTela()) setEstado('salvando');
+
+    const payload = {
+      ...snapshot,
+      ...(assinaturaNova || {}),
+      resident_id: r.id,
+      resident_name: r.name,
+      month: mk,
+      author_name: currentUser?.name || 'Supervisão',
+      updated_at: new Date().toISOString(),
+    };
+
+    const id = idsRef.current.get(chave);
+    const tabela = supabase.from('MonthlyReport');
+    const { data, error } = id
+      ? await tabela.update(payload).eq('id', id).select().maybeSingle()
+      : await tabela.insert([{ id: uid(), ...payload }]).select().maybeSingle();
+
+    if (isMissingColumn(error)) {
+      pendenteRef.current = null;   // insistir não resolve: falta coluna no banco
+      if (naTela()) {
+        setSchemaOk(false);
+        setEstado('salvo');
+      }
+      return { error };
+    }
+
+    if (error) {
+      // O que foi escrito não pode sumir: volta para a fila.
+      if (!pendenteRef.current) pendenteRef.current = pendente;
+      if (naTela()) setEstado('erro');
+      if (!avisouFalhaRef.current) {
+        avisouFalhaRef.current = true;
+        toast.error(`Não foi possível salvar a ficha: ${error.message}`);
+      }
+      return { error };
+    }
+
+    // O id guardado não existe mais (ficha apagada em outro lugar):
+    // refaz a gravação, agora como inserção.
+    if (!data && id) {
+      idsRef.current.delete(chave);
+      return gravar(pendente, assinaturaNova);
+    }
+
+    avisouFalhaRef.current = false;
+    if (data?.id) idsRef.current.set(chave, data.id);
+
+    if (naTela()) {
+      setRecord(data || null);
+      baseRef.current = JSON.stringify(snapshot);
+      // Se a supervisão seguiu digitando, o que veio depois ainda espera.
+      setEstado(pendenteRef.current ? 'editando' : 'salvo');
+    }
+    return { data };
+  }, [currentUser?.name, toast]);
+
+  /* Uma gravação por vez: duas em paralelo criariam dois registros
+     para o mesmo morador e mês. */
+  const enfileirar = useCallback((pendente, assinaturaNova = null) => {
+    const gravacao = filaRef.current.then(() => gravar(pendente, assinaturaNova));
+    filaRef.current = gravacao.catch(() => {});
+    return gravacao;
+  }, [gravar]);
+
+  const enviarPendente = useCallback(() => {
+    const pendente = pendenteRef.current;
+    if (!pendente) return null;
+    pendenteRef.current = null;
+    return enfileirar(pendente);
+  }, [enfileirar]);
+
+  /* Versão de identidade fixa, para ouvintes do navegador e para a
+     limpeza de efeitos, que não podem se refazer a cada tecla. */
+  const enviarPendenteRef = useRef(() => null);
+  useEffect(() => { enviarPendenteRef.current = enviarPendente; });
+  const salvarPendente = useCallback(() => enviarPendenteRef.current(), []);
+
+  /* Cada parada no teclado vira uma gravação. */
+  useEffect(() => {
+    if (!schemaOk || travada) return undefined;
+    if (!resident?.id || fichaRef.current !== chaveDaFicha(resident.id, monthKey)) return undefined;
+    if (JSON.stringify(form) === baseRef.current) return undefined;
+
+    pendenteRef.current = { chave: fichaRef.current, snapshot: form, resident, monthKey };
+    setEstado((e) => (e === 'salvando' || e === 'erro' ? e : 'editando'));
+
+    const timer = setTimeout(salvarPendente, ESPERA_ANTES_DE_GRAVAR);
+    return () => clearTimeout(timer);
+  }, [form, resident, monthKey, schemaOk, travada, salvarPendente]);
+
+  /* Trocar de morador, de mês ou sair da tela não pode engolir o que
+     estava escrito: o pendente vai antes. */
+  useEffect(() => () => { salvarPendente(); }, [resident?.id, monthKey, salvarPendente]);
+
+  /* No celular, sair do aplicativo congela a aba — grava ao esconder.
+     Se o navegador for fechado com algo por gravar, avisa. E quando a
+     conexão volta, manda o que ficou preso. */
+  useEffect(() => {
+    const aoEsconder = () => { if (document.hidden) salvarPendente(); };
+    const aoFechar = (e) => {
+      if (!pendenteRef.current) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    document.addEventListener('visibilitychange', aoEsconder);
+    window.addEventListener('beforeunload', aoFechar);
+    window.addEventListener('online', salvarPendente);
+    return () => {
+      document.removeEventListener('visibilitychange', aoEsconder);
+      window.removeEventListener('beforeunload', aoFechar);
+      window.removeEventListener('online', salvarPendente);
+    };
+  }, [salvarPendente]);
+
+  /** "Salvar" não espera o intervalo: manda agora. */
+  const salvarAgora = async () => {
+    const gravacao = salvarPendente();
+    if (!gravacao) {
+      toast.success('A ficha já está salva.');
+      return;
+    }
+    const { error } = await gravacao;
+    if (!error) toast.success('Ficha mensal salva.');
+  };
+
+  const assinar = async (assinaturaNova) => {
+    // O que está na tela vai junto da assinatura, numa gravação só.
+    pendenteRef.current = null;
+    const pendente = {
+      chave: chaveDaFicha(resident.id, monthKey), snapshot: form, resident, monthKey,
+    };
+    const { data, error } = await enfileirar(pendente, assinaturaNova);
+    if (error) return;
+
+    setAssinatura(data?.signed_by_name ? data : assinaturaNova);
+    setSignOpen(false);
+    toast.success('Ficha assinada e salva. Abrindo a impressão…');
+    // Aguarda o React pintar a assinatura antes de chamar a impressão.
+    setTimeout(() => window.print(), 600);
+  };
 
   const destravar = async () => {
     const ok = await confirm({
@@ -181,52 +369,19 @@ export default function MonthlySheet({
     },
   };
 
-  /* ---------------- Gravação ---------------- */
-  const save = async (assinaturaNova = null) => {
-    setSaving(true);
-    const payload = {
-      ...form,
-      ...(assinaturaNova || {}),
-      resident_id: resident.id,
-      resident_name: resident.name,
-      month: monthKey,
-      author_name: currentUser?.name || 'Supervisão',
-      updated_at: new Date().toISOString(),
-    };
-
-    const { error } = record
-      ? await supabase.from('MonthlyReport').update(payload).eq('id', record.id)
-      : await supabase.from('MonthlyReport').insert([{ id: uid(), ...payload }]);
-
-    setSaving(false);
-
-    if (isMissingColumn(error)) {
-      setSchemaOk(false);
-      return;
-    }
-    if (error) {
-      toast.error(`Erro ao salvar a ficha: ${error.message}`);
-      return;
-    }
-    if (assinaturaNova) {
-      setAssinatura(assinaturaNova);
-      setSignOpen(false);
-      toast.success('Ficha assinada e salva. Abrindo a impressão…');
-      // Aguarda o React pintar a assinatura antes de chamar a impressão.
-      setTimeout(() => window.print(), 600);
-    } else {
-      toast.success('Ficha mensal salva.');
-    }
-    load();
-  };
-
   if (!resident) return null;
 
   return (
     <div>
       <div className="sheet-toolbar print-hide">
         <div className="u-row u-gap-3 u-wrap">
-          {record ? (
+          {estado === 'erro' ? (
+            <Badge tone="danger" icon={CloudOff}>Não foi possível salvar</Badge>
+          ) : estado === 'salvando' ? (
+            <Badge tone="neutral" dot>Salvando…</Badge>
+          ) : estado === 'editando' ? (
+            <Badge tone="warning" dot>Salvando alterações…</Badge>
+          ) : record ? (
             <Badge tone="success" dot>Salva em {formatDateTime(record.updated_at)}</Badge>
           ) : (
             <Badge tone="neutral" dot>Ainda não salva</Badge>
@@ -238,7 +393,9 @@ export default function MonthlySheet({
           )}
 
           <Disclosure title="Como usar">
-            Clique em qualquer trecho da ficha para editar. Os botões{' '}
+            Clique em qualquer trecho da ficha para editar. O que for escrito é{' '}
+            <strong>salvo sozinho</strong>, segundos depois da última tecla — a
+            tarja ao lado mostra quando a ficha foi gravada. Os botões{' '}
             <strong>Gerar rascunho</strong> preenchem a seção a partir do que já
             está registrado no sistema — revise antes de emitir.{' '}
             <strong>Gerar relatório assinado</strong> confirma sua senha, salva a
@@ -272,9 +429,9 @@ export default function MonthlySheet({
               </Button>
               <Button
                 variant="secondary" size="sm" icon={Save}
-                onClick={() => save()} loading={saving} disabled={!schemaOk}
+                onClick={salvarAgora} loading={estado === 'salvando'} disabled={!schemaOk}
               >
-                Salvar
+                Salvar agora
               </Button>
               <Button
                 variant="primary" size="sm" icon={PenLine}
@@ -295,6 +452,16 @@ export default function MonthlySheet({
             {ehDesenvolvedor
               ? ' Use "Destravar" para editar — a assinatura será removida e a ficha precisará ser assinada de novo.'
               : ' Para corrigir algo, peça ao responsável técnico do sistema.'}
+          </Alert>
+        </div>
+      )}
+
+      {estado === 'erro' && (
+        <div className="print-hide" style={{ maxWidth: 820, margin: '0 auto var(--space-4)' }}>
+          <Alert tone="danger" title="O texto ainda não chegou ao banco">
+            O que você escreveu continua na tela e será gravado assim que a conexão
+            voltar. Não feche a página sem ver a tarja de ficha salva — se precisar,
+            use <strong>Salvar agora</strong> para tentar de novo.
           </Alert>
         </div>
       )}
@@ -329,7 +496,7 @@ export default function MonthlySheet({
       <SignatureModal
         open={signOpen}
         onClose={() => setSignOpen(false)}
-        onSigned={(a) => save(a)}
+        onSigned={assinar}
         currentUser={currentUser}
         title="Assinar e emitir a ficha"
         description={`Ficha de ${resident?.name} — ${periodo}.`}
