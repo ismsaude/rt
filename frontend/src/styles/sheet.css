@@ -142,6 +142,27 @@
 /* A ajuda aberta ocupa a largura toda, abaixo dos botões */
 .sheet-toolbar .disclosure[open] { flex-basis: 100%; }
 
+/* Estado da gravação automática — a ficha não tem botão de salvar, então
+   esta é a única garantia visível de que o texto chegou ao banco. */
+.sheet-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: 1.4;
+  white-space: nowrap;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+.sheet-status--salvo { color: var(--success-text); background: var(--success-subtle); border-color: var(--green-100); }
+.sheet-status--ativo { color: var(--text-muted);   background: var(--gray-100);      border-color: var(--border); }
+.sheet-status--erro  { color: var(--danger-text);  background: var(--danger-subtle);  border-color: var(--red-100); }
+
+.sheet-status__girando { animation: spin 900ms linear infinite; }
+
 /* ------------------------------------------------------------
    IMPRESSÃO — a ficha vira a página inteira
    ------------------------------------------------------------ */

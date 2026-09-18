@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CloudOff, Copy, Lock, LockOpen, PenLine, Printer, Save } from 'lucide-react';
+import {
+  CheckCircle2, CloudOff, Copy, Loader2, Lock, LockOpen, PenLine, Printer, RotateCw,
+} from 'lucide-react';
 import { buildObservacoes } from '../../lib/monthlyReport';
 import {
   draftAdesao, draftComportamento, draftIntervencoes, draftInteracoes,
 } from '../../lib/sheetDrafts';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
-import { formatDateTime, MESES, toISODate } from '../../lib/format';
+import { formatDateTime, formatTime, MESES, toDate, toISODate } from '../../lib/format';
 import {
   Alert, Badge, Button, Disclosure, useConfirm, useToast,
 } from '../ui';
@@ -31,6 +33,15 @@ const EMPTY = {
    que nada se perca se o celular travar ou a aba fechar; longo o
    bastante para não mandar uma escrita por tecla digitada. */
 const ESPERA_ANTES_DE_GRAVAR = 1200;
+
+/** "09:46" no mesmo dia; com a data quando a gravação é mais antiga. */
+function horaDaGravacao(valor) {
+  const d = toDate(valor);
+  if (!d) return '';
+  return d.toDateString() === new Date().toDateString()
+    ? formatTime(d)
+    : formatDateTime(d);
+}
 
 /** "morador|mês" — identifica a ficha a que um texto pertence. */
 const chaveDaFicha = (residentId, monthKey) => `${residentId}|${monthKey}`;
@@ -263,11 +274,11 @@ export default function MonthlySheet({
     };
   }, [salvarPendente]);
 
-  /** "Salvar" não espera o intervalo: manda agora. */
+  /** Retentativa depois de uma falha: manda sem esperar o intervalo. */
   const salvarAgora = async () => {
     const gravacao = salvarPendente();
     if (!gravacao) {
-      toast.success('A ficha já está salva.');
+      setEstado('salvo');
       return;
     }
     const { error } = await gravacao;
@@ -376,15 +387,25 @@ export default function MonthlySheet({
       <div className="sheet-toolbar print-hide">
         <div className="u-row u-gap-3 u-wrap">
           {estado === 'erro' ? (
-            <Badge tone="danger" icon={CloudOff}>Não foi possível salvar</Badge>
-          ) : estado === 'salvando' ? (
-            <Badge tone="neutral" dot>Salvando…</Badge>
-          ) : estado === 'editando' ? (
-            <Badge tone="warning" dot>Salvando alterações…</Badge>
+            <span className="sheet-status sheet-status--erro">
+              <CloudOff size={14} aria-hidden="true" />
+              Não foi possível salvar
+            </span>
+          ) : estado === 'salvando' || estado === 'editando' ? (
+            <span className="sheet-status sheet-status--ativo">
+              <Loader2 size={14} className="sheet-status__girando" aria-hidden="true" />
+              Salvando…
+            </span>
           ) : record ? (
-            <Badge tone="success" dot>Salva em {formatDateTime(record.updated_at)}</Badge>
+            <span className="sheet-status sheet-status--salvo">
+              <CheckCircle2 size={14} aria-hidden="true" />
+              Salvo automaticamente {horaDaGravacao(record.updated_at)}
+            </span>
           ) : (
-            <Badge tone="neutral" dot>Ainda não salva</Badge>
+            <span className="sheet-status sheet-status--ativo">
+              <PenLine size={14} aria-hidden="true" />
+              Salva sozinha enquanto você escreve
+            </span>
           )}
           {travada && (
             <Badge tone="primary" icon={Lock}>
@@ -395,7 +416,8 @@ export default function MonthlySheet({
           <Disclosure title="Como usar">
             Clique em qualquer trecho da ficha para editar. O que for escrito é{' '}
             <strong>salvo sozinho</strong>, segundos depois da última tecla — a
-            tarja ao lado mostra quando a ficha foi gravada. Os botões{' '}
+            tarja ao lado mostra a hora da última gravação. Não há botão de
+            salvar: só aparece um, para tentar de novo, se a gravação falhar. Os botões{' '}
             <strong>Gerar rascunho</strong> preenchem a seção a partir do que já
             está registrado no sistema — revise antes de emitir.{' '}
             <strong>Gerar relatório assinado</strong> confirma sua senha, salva a
@@ -427,12 +449,15 @@ export default function MonthlySheet({
               >
                 Copiar para outros
               </Button>
-              <Button
-                variant="secondary" size="sm" icon={Save}
-                onClick={salvarAgora} loading={estado === 'salvando'} disabled={!schemaOk}
-              >
-                Salvar agora
-              </Button>
+              {/* A gravação é automática; o botão só aparece quando ela falha. */}
+              {estado === 'erro' && (
+                <Button
+                  variant="secondary" size="sm" icon={RotateCw}
+                  onClick={salvarAgora} disabled={!schemaOk}
+                >
+                  Tentar de novo
+                </Button>
+              )}
               <Button
                 variant="primary" size="sm" icon={PenLine}
                 onClick={() => setSignOpen(true)} disabled={!schemaOk}
@@ -461,7 +486,7 @@ export default function MonthlySheet({
           <Alert tone="danger" title="O texto ainda não chegou ao banco">
             O que você escreveu continua na tela e será gravado assim que a conexão
             voltar. Não feche a página sem ver a tarja de ficha salva — se precisar,
-            use <strong>Salvar agora</strong> para tentar de novo.
+            use <strong>Tentar de novo</strong>.
           </Alert>
         </div>
       )}
