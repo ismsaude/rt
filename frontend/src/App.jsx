@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity, Calendar, CalendarDays, CheckSquare, ClipboardEdit, Database,
   FileText, KeyRound, LayoutDashboard, LogOut, Menu as MenuIcon, PackageOpen,
-  Pill, ShoppingCart, Shield, Stethoscope, Utensils, X,
+  Pill, ShoppingCart, Shield, Stethoscope, Utensils, Wallet, X,
 } from 'lucide-react';
 
 import Login from './components/Login';
@@ -33,6 +33,7 @@ import InventoryManagement from './components/admin/InventoryManagement';
 import ResidentReports from './components/admin/ResidentReports';
 import DataRegistration from './components/admin/DataRegistration';
 import AccessManagement from './components/admin/AccessManagement';
+import ResidentFunds from './components/admin/ResidentFunds';
 
 /* ------------------------------------------------------------------
    Mapa de navegação — fonte única para menu lateral, barra inferior
@@ -44,6 +45,7 @@ const VIEWS = {
   escalas:      { label: 'Gestão de Escalas',    short: 'Escalas',   icon: CalendarDays, Component: ScheduleManagement },
   estoque_admin:{ label: 'Estoque e Compras',    short: 'Compras',   icon: ShoppingCart, Component: InventoryManagement },
   relatorios:   { label: 'Relatórios',           short: 'Relatórios',icon: FileText,     Component: ResidentReports },
+  recursos:     { label: 'Recursos do Morador',  short: 'Recursos',  icon: Wallet,       Component: ResidentFunds },
   acessos:      { label: 'Gestão de Acessos',    short: 'Acessos',   icon: Shield,       Component: AccessManagement },
 
   tarefas:      { label: 'Tarefas e Compromissos', short: 'Tarefas', icon: CheckSquare,  Component: Dashboard },
@@ -59,7 +61,7 @@ const VIEWS = {
 
 const ADMIN_MENU = [
   { section: 'Visão geral', items: ['inicio'] },
-  { section: 'Sistema e gestão', items: ['cadastros', 'escalas', 'estoque_admin', 'relatorios', 'acessos'] },
+  { section: 'Sistema e gestão', items: ['cadastros', 'escalas', 'estoque_admin', 'relatorios', 'recursos', 'acessos'] },
   { section: 'Operacional — cuidador', items: ['tarefas', 'medicacoes', 'cardapio', 'plantao'] },
   { section: 'Operacional — enfermagem', items: ['enfermagem', 'sinais', 'medicacoes', 'estoque', 'programacao'] },
 ];

@@ -15,7 +15,7 @@ const FOOD_CATEGORIES = ['Básico', 'Limpeza', 'Higiene', 'Verduras', 'Proteína
 const FOOD_UNITS = ['unidades', 'kg', 'litros', 'pacotes'];
 
 const EMPTY_RESIDENT = {
-  name: '', cpf: '', dateOfBirth: '', sex: '', conditions: '', allergies: '',
+  name: '', cpf: '', address: '', dateOfBirth: '', sex: '', conditions: '', allergies: '',
   autonomy_hygiene: '', autonomy_food: '', autonomy_activities: '',
 };
 const EMPTY_FOOD = { name: '', category: 'Básico', unit: 'unidades', quantity: '', minQuantity: '' };
@@ -70,6 +70,7 @@ export default function DataRegistration() {
     setResident({
       name: r.name || '',
       cpf: r.cpf || '',
+      address: r.address || '',
       dateOfBirth: r.dateOfBirth ? String(r.dateOfBirth).split('T')[0] : '',
       sex: r.sex || '',
       conditions: r.conditions || '',
@@ -372,6 +373,13 @@ export default function DataRegistration() {
                 onChange={(e) => setResident((r) => ({ ...r, dateOfBirth: e.target.value }))}
               />
             </div>
+            <TextField
+              label="Endereço"
+              hint="Consta no cabeçalho do relatório de recursos do morador."
+              placeholder="Rua, número, bairro, cidade/UF"
+              value={resident.address}
+              onChange={(e) => setResident((r) => ({ ...r, address: e.target.value }))}
+            />
             <SelectField
               label="Sexo"
               hint="Consta no cabeçalho da ficha de acompanhamento mensal."

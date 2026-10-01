@@ -20,7 +20,7 @@ const PRAZO_IMAGENS = 8000;
 const PRAZO_MONTAGEM = 6000;
 
 /** Espera as imagens aparecerem no DOM e terminarem de carregar. */
-async function aguardarImagens(raiz, esperadas) {
+export async function aguardarImagens(raiz, esperadas) {
   if (!raiz) return;
 
   const espera = (ms) => new Promise((r) => { setTimeout(r, ms); });

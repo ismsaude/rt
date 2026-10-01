@@ -15,6 +15,7 @@ import { supabase } from './supabase';
 import { uid } from './id';
 
 const BUCKET = 'ficha-fotos';
+export const BUCKET_COMPROVANTES = 'comprovantes';
 const LADO_MAXIMO = 1400;   // suficiente para impressão em meia página
 const QUALIDADE = 0.82;
 const VALIDADE_URL = 60 * 60; // uma hora
@@ -43,8 +44,11 @@ export async function prepararImagem(file) {
   return { blob, largura, altura, tamanhoOriginal: file.size, tamanhoFinal: blob.size };
 }
 
-/** Envia a foto e devolve o registro para guardar na ficha. */
-export async function enviarFoto(file, { residentId, monthKey }) {
+/**
+ * Envia a foto e devolve o registro para guardar na ficha.
+ * `bucket` permite reaproveitar o envio para outros anexos (ex.: notas fiscais).
+ */
+export async function enviarFoto(file, { residentId, monthKey, bucket = BUCKET }) {
   if (!file.type.startsWith('image/')) {
     return { error: { message: 'O arquivo precisa ser uma imagem.' } };
   }
@@ -53,7 +57,7 @@ export async function enviarFoto(file, { residentId, monthKey }) {
   const path = `${residentId}/${monthKey}/${uid()}.jpg`;
 
   const { error } = await supabase.storage
-    .from(BUCKET)
+    .from(bucket)
     .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
 
   if (error) return { error };
@@ -65,12 +69,12 @@ export async function enviarFoto(file, { residentId, monthKey }) {
 }
 
 /** URLs assinadas para exibir as fotos de uma ficha. */
-export async function assinarFotos(photos) {
+export async function assinarFotos(photos, bucket = BUCKET) {
   const lista = Array.isArray(photos) ? photos : [];
   if (lista.length === 0) return [];
 
   const { data, error } = await supabase.storage
-    .from(BUCKET)
+    .from(bucket)
     .createSignedUrls(lista.map((p) => p.path), VALIDADE_URL);
 
   if (error) return lista.map((p) => ({ ...p, url: null }));
@@ -82,8 +86,8 @@ export async function assinarFotos(photos) {
 }
 
 /** Remove o arquivo do bucket. */
-export async function removerFoto(path) {
-  return supabase.storage.from(BUCKET).remove([path]);
+export async function removerFoto(path, bucket = BUCKET) {
+  return supabase.storage.from(bucket).remove([path]);
 }
 
 export function formatarTamanho(bytes) {
