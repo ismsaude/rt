@@ -27,30 +27,39 @@ import ReceiptPhotos from './ReceiptPhotos';
 function ValorSalvo({ label, hint, centavos, onSave, disabled, placeholder }) {
   const [texto, setTexto] = useState(paraCampo(centavos));
   const [estado, setEstado] = useState('');
-  const ultimo = useRef(centavos);
+  const ultimo = useRef(centavos); // último valor que o banco conhece
 
-  // Troca de morador/mês: recarrega o texto.
+  // O texto só é refeito quando o valor muda por fora (outro morador/mês,
+  // recarga). Mudança causada pela própria gravação não mexe no campo:
+  // reescrever o que a pessoa está digitando bagunça o cursor e os dígitos.
   useEffect(() => {
-    setTexto(paraCampo(centavos));
+    if (centavos === ultimo.current) return;
     ultimo.current = centavos;
+    setTexto(paraCampo(centavos));
     setEstado('');
   }, [centavos]);
 
   const invalido = texto.trim() !== '' && lerValor(texto) === null;
 
-  useEffect(() => {
-    if (invalido) return undefined;
+  const gravar = async () => {
+    if (invalido) return;
     const novo = texto.trim() === '' ? null : lerValor(texto);
-    if (novo === ultimo.current) return undefined;
+    if (novo === ultimo.current) return;
 
-    setEstado('digitando');
-    const t = setTimeout(async () => {
-      setEstado('salvando');
-      const ok = await onSave(novo);
-      if (ok) { ultimo.current = novo; setEstado('salvo'); } else setEstado('erro');
-    }, 1000);
+    const anterior = ultimo.current;
+    ultimo.current = novo;
+    setEstado('salvando');
+    const ok = await onSave(novo);
+    if (ok) setEstado('salvo');
+    else { ultimo.current = anterior; setEstado('erro'); }
+  };
+
+  // Grava depois de uma pausa na digitação e também ao sair do campo.
+  const gravarRef = useRef(gravar);
+  gravarRef.current = gravar;
+  useEffect(() => {
+    const t = setTimeout(() => gravarRef.current(), 1500);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [texto]);
 
   const aviso = { salvando: 'salvando…', salvo: 'salvo', erro: 'não foi possível salvar' }[estado];
@@ -65,6 +74,7 @@ function ValorSalvo({ label, hint, centavos, onSave, disabled, placeholder }) {
       value={texto}
       disabled={disabled}
       onChange={(e) => setTexto(e.target.value)}
+      onBlur={gravar}
     />
   );
 }
@@ -424,7 +434,7 @@ export default function ResidentFunds({ currentUser }) {
             </Alert>
           )}
 
-          <StatGrid>
+          <StatGrid className="funds-stats">
             <Stat label="Saldo anterior" value={relatorio.inicial.definido ? formatarReais(relatorio.inicial.centavos) : '—'}
               hint={relatorio.inicial.definido ? (relatorio.inicial.manual ? 'informado à mão' : 'saldo final do mês anterior') : 'informe abaixo'} />
             <Stat label="Entradas" value={formatarReais(relatorio.entradas)} tone="success" />
@@ -511,6 +521,7 @@ export default function ResidentFunds({ currentUser }) {
             <CardBody>
               <div className="funds-conferencia">
                 <ValorSalvo
+                  key={`abertura-${residentId}-${monthKey}`}
                   label="Saldo inicial do mês (R$)"
                   hint={relatorio.inicial.definido && !relatorio.inicial.manual
                     ? 'Automático: vem do mês anterior. Preencha só para corrigir.'
@@ -521,6 +532,7 @@ export default function ResidentFunds({ currentUser }) {
                   onSave={(v) => gravarMes({ opening_cents: v })}
                 />
                 <ValorSalvo
+                  key={`extrato-${residentId}-${monthKey}`}
                   label="Saldo final no extrato (R$)"
                   hint="Conta + aplicação automática, no último dia do mês."
                   centavos={bancoCents}

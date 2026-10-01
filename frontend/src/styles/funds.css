@@ -119,3 +119,14 @@
   .sheet-batch .funds-receipt-page { break-after: page; page-break-after: always; }
   .sheet-batch > :last-child { break-after: auto; page-break-after: auto; }
 }
+
+/* ---------- Cartões de saldo ----------
+   Valores em reais passam de 10 caracteres ("R$ 59.305,62"). A fonte
+   acompanha a largura do próprio cartão, para o número nunca ser cortado,
+   seja qual for o tamanho da tela. */
+.funds-stats .stat { container-type: inline-size; }
+.funds-stats .stat__value {
+  font-size: clamp(1rem, 13cqi, 1.875rem);
+  white-space: nowrap;
+}
+.funds-conferencia__valor { white-space: nowrap; }
