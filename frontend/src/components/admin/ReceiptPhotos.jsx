@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, X } from 'lucide-react';
+import { Camera, Paperclip, X } from 'lucide-react';
 import {
-  BUCKET_COMPROVANTES, assinarFotos, enviarFoto, removerFoto,
+  BUCKET_COMPROVANTES, assinarFotos, enviarArquivo, removerFoto,
 } from '../../lib/photos';
 import { Button, useToast } from '../ui';
 
@@ -18,7 +18,8 @@ export default function ReceiptPhotos({
   photos, onChange, residentId, monthKey, label = 'Fotografar nota', readOnly = false,
 }) {
   const toast = useToast();
-  const input = useRef(null);
+  const camera = useRef(null);
+  const pickFile = useRef(null);
   const [comUrl, setComUrl] = useState([]);
   const [enviando, setEnviando] = useState(false);
 
@@ -36,11 +37,14 @@ export default function ReceiptPhotos({
     setEnviando(true);
     const novas = [];
     for (const arquivo of arquivos) {
-      const { foto, error } = await enviarFoto(arquivo, {
+      const { fotos, aviso, error } = await enviarArquivo(arquivo, {
         residentId, monthKey, bucket: BUCKET_COMPROVANTES,
       });
-      if (error) toast.error(`Não foi possível enviar a foto: ${error.message}`);
-      else novas.push({ path: foto.path, uploaded_at: foto.uploaded_at });
+      if (error) toast.error(`Não foi possível enviar ${arquivo.name || 'o arquivo'}: ${error.message}`);
+      else {
+        fotos.forEach((f) => novas.push({ path: f.path, uploaded_at: f.uploaded_at }));
+        if (aviso) toast.info(aviso);
+      }
     }
     setEnviando(false);
 
@@ -77,21 +81,40 @@ export default function ReceiptPhotos({
       ))}
 
       {!readOnly && (
-        <Button
-          variant="secondary"
-          icon={Camera}
-          loading={enviando}
-          onClick={() => input.current?.click()}
-        >
-          {(photos || []).length > 0 ? 'Adicionar outra' : label}
-        </Button>
+        <>
+          <Button
+            variant="secondary"
+            icon={Camera}
+            loading={enviando}
+            onClick={() => camera.current?.click()}
+          >
+            {(photos || []).length > 0 ? 'Fotografar outra' : label}
+          </Button>
+          <Button
+            variant="secondary"
+            icon={Paperclip}
+            loading={enviando}
+            onClick={() => pickFile.current?.click()}
+          >
+            Imagem ou PDF
+          </Button>
+        </>
       )}
 
+      {/* Câmera: no celular `capture` abre direto a câmera, sem opção de arquivo. */}
       <input
-        ref={input}
+        ref={camera}
         type="file"
         accept="image/*"
         capture="environment"
+        style={{ display: 'none' }}
+        onChange={adicionar}
+      />
+      <input
+        ref={pickFile}
+        type="file"
+        accept="image/*,application/pdf,.pdf"
+        multiple
         style={{ display: 'none' }}
         onChange={adicionar}
       />
