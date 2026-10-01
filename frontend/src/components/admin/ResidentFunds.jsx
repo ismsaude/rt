@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Camera, CheckCircle2, FileText, Lock, LockOpen, Pencil, PenLine, Plus, Printer, Trash2, Wallet,
+  Camera, CheckCircle2, FileText, FileUp, Lock, LockOpen, Pencil, PenLine, Plus, Printer, Trash2, Wallet,
 } from 'lucide-react';
 import {
   apagarLancamento, carregarConta, formatarReais, lerValor, mesDe, montarRelatorio,
@@ -17,6 +17,7 @@ import {
 } from '../ui';
 import FundsDocument from './FundsDocument';
 import FundsPrint from './FundsPrint';
+import ImportLedgerModal from './ImportLedgerModal';
 import ReceiptPhotos from './ReceiptPhotos';
 
 /**
@@ -215,6 +216,7 @@ export default function ResidentFunds({ currentUser }) {
   const [assinando, setAssinando] = useState(false);
   const [imprimindo, setImprimindo] = useState(null);
   const [verRelatorio, setVerRelatorio] = useState(false);
+  const [importando, setImportando] = useState(false);
 
   /* ---- Moradores ---- */
   useEffect(() => {
@@ -369,9 +371,15 @@ export default function ResidentFunds({ currentUser }) {
         title="Recursos do Morador"
         description="Livro-caixa da conta de cada morador e relatório mensal de benefícios."
         actions={
-          <Button variant="primary" icon={Plus} onClick={abrirNovo} disabled={!resident || fechado}>
-            Novo lançamento
-          </Button>
+          <>
+            <Button variant="secondary" icon={FileUp} onClick={() => setImportando(true)}
+              disabled={!resident || fechado}>
+              Importar planilha
+            </Button>
+            <Button variant="primary" icon={Plus} onClick={abrirNovo} disabled={!resident || fechado}>
+              Novo lançamento
+            </Button>
+          </>
         }
       />
 
@@ -606,6 +614,23 @@ export default function ResidentFunds({ currentUser }) {
         onSaved={aoSalvar}
         residentId={residentId}
         monthKey={monthKey}
+      />
+
+      <ImportLedgerModal
+        open={importando}
+        onClose={() => setImportando(false)}
+        residentId={residentId}
+        monthKey={monthKey}
+        existentes={conta.lancamentos}
+        saldoSistema={relatorio.inicial}
+        author={currentUser?.name}
+        onImported={async ({ saldoInicialPlanilha }) => {
+          // Sem saldo inicial no sistema, adota o da planilha.
+          if (saldoInicialPlanilha != null && !relatorio.inicial.definido) {
+            await gravarMes({ opening_cents: saldoInicialPlanilha });
+          }
+          carregar();
+        }}
       />
 
       <SignatureModal

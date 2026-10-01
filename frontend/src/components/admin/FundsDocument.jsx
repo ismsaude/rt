@@ -99,7 +99,7 @@ export default function FundsDocument({ resident, monthKey, relatorio, assinatur
 
       <p className="funds-doc__note">
         Deverá ser elaborado em 02 vias, e encaminhado à Secretaria de Saúde com cópia dos
-        comprovantes de despesa/pagamento, e extrato bancário morador, a outra via arquivada
+        comprovantes de despesa/pagamento, e extrato bancário do morador, a outra via arquivada
         pela Contratada.
       </p>
 

@@ -205,6 +205,29 @@ export async function salvarLancamento(l) {
   return supabase.from('ResidentLedger').upsert(payload, { onConflict: 'id' });
 }
 
+/**
+ * Grava vários lançamentos de uma vez (importação).
+ * O created_at cresce de 1 ms em 1 ms para manter a ordem da planilha
+ * dentro do mesmo dia.
+ */
+export async function salvarLancamentos(lista) {
+  const base = Date.now();
+  const linhas = lista.map((l, i) => ({
+    id: l.id,
+    resident_id: l.resident_id,
+    entry_date: l.entry_date,
+    description: l.description.trim(),
+    kind: l.kind,
+    amount: emNumeric(l.cents),
+    obs: l.obs?.trim() || null,
+    receipts: [],
+    author_name: l.author_name,
+    created_at: new Date(base + i).toISOString(),
+    updated_at: new Date().toISOString(),
+  }));
+  return supabase.from('ResidentLedger').insert(linhas);
+}
+
 export const apagarLancamento = (id) => supabase.from('ResidentLedger').delete().eq('id', id);
 
 /** Grava campos do mês (saldo inicial, saldo do extrato, fotos do extrato). */
