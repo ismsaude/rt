@@ -55,7 +55,7 @@ export default function FundsDocument({ resident, monthKey, relatorio, assinatur
 
       <table className="funds-doc__table">
         <thead>
-          <tr><th colSpan={7} className="funds-doc__caption">SALDO CONTA BANCÁRIA</th></tr>
+          <tr><th colSpan={7} className="funds-doc__caption">EXTRATO MOVIMENTAÇÃO NO MÊS</th></tr>
           <tr>
             <th>ITEM</th>
             <th>DATA</th>
@@ -91,7 +91,7 @@ export default function FundsDocument({ resident, monthKey, relatorio, assinatur
       <table className="funds-doc__total">
         <tbody>
           <tr>
-            <td>SALDO CONTA</td>
+            <td>SALDO AO FINAL DO MÊS</td>
             <td>{formatarReais(relatorio.final)}</td>
           </tr>
         </tbody>
