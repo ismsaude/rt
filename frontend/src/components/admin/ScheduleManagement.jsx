@@ -1,220 +1,70 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Pencil, Users } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { formatDate, MESES } from '../../lib/format';
-import {
-  Alert, Avatar, Badge, Button, Card, EmptyState, Modal,
-  PageHeader, SelectField, SkeletonList, Stat, StatGrid, Table, TextField,
-  useToast,
-} from '../ui';
+import { useCallback, useEffect, useState } from 'react';
+import { CalendarDays, CalendarOff, Users } from 'lucide-react';
+import { carregarEquipe, carregarPostos } from '../../lib/schedule';
+import { toMonthKey } from '../../lib/format';
+import { PageHeader, Tabs, useToast } from '../ui';
+import ScheduleHolidaysTab from './ScheduleHolidaysTab';
+import ScheduleMonthTab from './ScheduleMonthTab';
+import ScheduleShiftsTab from './ScheduleShiftsTab';
 
-const REGIMES = [
-  'A definir', '12x36 diurno', '12x36 noturno',
-  '8h diárias', '30h semanais', 'Folguista',
-];
-
-const ROLE_LABEL = {
-  ADMIN: 'Supervisão',
-  DIRETOR: 'Diretoria',
-  ENFERMEIRO: 'Téc. enfermagem',
-  CUIDADOR: 'Cuidador(a)',
-};
-
-/** Configuração de escala ainda não tem tabela própria no banco. */
-function readLocalSchedule() {
-  try {
-    return JSON.parse(localStorage.getItem('rt_schedule') || '{}');
-  } catch {
-    return {};
-  }
-}
-
-export default function ScheduleManagement() {
+/**
+ * Gestão de escalas.
+ *
+ * Três abas:
+ *   • Escala do mês — a escala gerada, ajustável dia a dia, com PDF;
+ *   • Postos e equipe — as regras: quem cobre cada posto e como;
+ *   • Feriados — nos feriados só os plantões 12x36 trabalham.
+ *
+ * Os meses já gerados são gravados: continuam como estavam, mesmo que as
+ * regras mudem depois.
+ */
+export default function ScheduleManagement({ currentUser }) {
   const toast = useToast();
+  const [aba, setAba] = useState('mes');
+  const [monthKey, setMonthKey] = useState(toMonthKey(new Date()));
+  const [ano, setAno] = useState(new Date().getFullYear());
+  const [postos, setPostos] = useState([]);
+  const [equipe, setEquipe] = useState([]);
 
-  const [team, setTeam] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ type: 'A definir', nextShift: '' });
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase.from('User').select('*').order('name');
-
-    if (error) {
-      toast.error('Não foi possível carregar a equipe.');
-      setTeam([]);
-    } else {
-      const config = readLocalSchedule();
-      setTeam(
-        (data || []).map((u) => ({
-          id: u.id,
-          name: u.name,
-          role: u.role,
-          active: u.active !== false,
-          type: config[u.id]?.type || 'A definir',
-          nextShift: config[u.id]?.nextShift || '',
-        }))
-      );
-    }
-    setLoading(false);
+  const carregar = useCallback(async () => {
+    const [p, e] = await Promise.all([carregarPostos(), carregarEquipe()]);
+    if (p.error) toast.error('Não foi possível carregar os postos. A migração 015 foi aplicada?');
+    if (e.error) toast.error('Não foi possível carregar a equipe.');
+    setPostos(p.postos);
+    setEquipe(e.equipe);
   }, [toast]);
 
-  useEffect(() => { load(); }, [load]);
-
-  const activeCount = useMemo(() => team.filter((u) => u.active).length, [team]);
-  const scheduledCount = useMemo(
-    () => team.filter((u) => u.type !== 'A definir').length,
-    [team]
-  );
-
-  const now = new Date();
-  const currentMonth = `${MESES[now.getMonth()]} de ${now.getFullYear()}`;
-
-  const openEdit = (member) => {
-    setForm({ type: member.type, nextShift: member.nextShift });
-    setEditing(member);
-  };
-
-  const save = (e) => {
-    e?.preventDefault();
-
-    try {
-      const config = readLocalSchedule();
-      config[editing.id] = { type: form.type, nextShift: form.nextShift };
-      localStorage.setItem('rt_schedule', JSON.stringify(config));
-    } catch {
-      toast.error('Não foi possível salvar a escala neste dispositivo.');
-      return;
-    }
-
-    setTeam((prev) =>
-      prev.map((u) => (u.id === editing.id ? { ...u, type: form.type, nextShift: form.nextShift } : u))
-    );
-    setEditing(null);
-    toast.success('Escala atualizada neste dispositivo.');
-  };
+  useEffect(() => { carregar(); }, [carregar]);
 
   return (
-    <div>
+    <div className="u-stack u-gap-5">
       <PageHeader
         title="Gestão de escalas"
-        description="Regime de trabalho e próximo plantão de cada membro da equipe."
+        description="Escala mensal da equipe: 12x36, horário comercial e feriados, com histórico e PDF."
       />
 
-      <div style={{ marginBottom: 'var(--space-6)' }}>
-        <Alert tone="warning" title="Escala salva apenas neste dispositivo">
-          A configuração de regime e próximo plantão ainda não possui tabela no banco:
-          ela fica guardada neste navegador e não é vista pelos outros usuários.
-          A migração para o servidor está prevista na etapa de fundação de dados.
-        </Alert>
-      </div>
+      <Tabs
+        ariaLabel="Seções da escala"
+        value={aba}
+        onChange={setAba}
+        options={[
+          { value: 'mes', label: 'Escala do mês', icon: CalendarDays },
+          { value: 'postos', label: 'Postos e equipe', icon: Users, count: postos.filter((p) => p.active).length },
+          { value: 'feriados', label: 'Feriados', icon: CalendarOff },
+        ]}
+      />
 
-      {!loading && (
-        <StatGrid style={{ marginBottom: 'var(--space-6)' }}>
-          <Stat label="Mês de referência" value={currentMonth} icon={CalendarDays} />
-          <Stat label="Equipe ativa" value={activeCount} hint={`de ${team.length} cadastrados`} icon={Users} />
-          <Stat
-            label="Com escala definida" value={scheduledCount}
-            tone={scheduledCount < activeCount ? 'warning' : 'success'}
-            hint={scheduledCount < activeCount ? `${activeCount - scheduledCount} pendente(s)` : 'Todos definidos'}
-          />
-        </StatGrid>
+      {aba === 'mes' && (
+        <ScheduleMonthTab
+          postos={postos} equipe={equipe} currentUser={currentUser}
+          monthKey={monthKey} setMonthKey={setMonthKey}
+          irParaPostos={() => setAba('postos')}
+        />
       )}
-
-      {loading ? (
-        <SkeletonList count={4} />
-      ) : team.length === 0 ? (
-        <Card>
-          <EmptyState
-            icon={Users}
-            title="Nenhum funcionário cadastrado"
-            description="Cadastre a equipe em Gestão de Acessos para montar a escala."
-          />
-        </Card>
-      ) : (
-        <Table>
-          <thead>
-            <tr>
-              <th>Funcionário</th>
-              <th>Regime</th>
-              <th>Próximo plantão</th>
-              <th>Situação</th>
-              <th style={{ textAlign: 'right' }}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {team.map((member) => (
-              <tr key={member.id}>
-                <td>
-                  <div className="u-row u-gap-3">
-                    <Avatar name={member.name} size="sm" />
-                    <div style={{ minWidth: 0 }}>
-                      <div className="table__cell-strong">{member.name}</div>
-                      <div className="table__cell-muted" style={{ fontSize: 'var(--text-xs)' }}>
-                        {ROLE_LABEL[member.role] || member.role}
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <Badge tone={member.type === 'A definir' ? 'neutral' : 'primary'}>
-                    {member.type}
-                  </Badge>
-                </td>
-                <td className="table__cell-muted">
-                  {member.nextShift ? formatDate(member.nextShift) : '—'}
-                </td>
-                <td>
-                  <Badge tone={member.active ? 'success' : 'neutral'} dot>
-                    {member.active ? 'Ativo' : 'Inativo'}
-                  </Badge>
-                </td>
-                <td>
-                  <div className="table__actions">
-                    <Button
-                      variant="secondary" size="sm" icon={Pencil}
-                      onClick={() => openEdit(member)}
-                    >
-                      Definir
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+      {aba === 'postos' && (
+        <ScheduleShiftsTab postos={postos} equipe={equipe} onChanged={carregar} />
       )}
-
-      <Modal
-        open={!!editing}
-        onClose={() => setEditing(null)}
-        title="Definir escala"
-        description={editing?.name}
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setEditing(null)}>Cancelar</Button>
-            <Button variant="primary" onClick={save}>Salvar</Button>
-          </>
-        }
-      >
-        <form onSubmit={save} className="u-stack u-gap-4">
-          <SelectField
-            label="Regime de trabalho"
-            value={form.type}
-            onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
-          >
-            {REGIMES.map((r) => <option key={r} value={r}>{r}</option>)}
-          </SelectField>
-
-          <TextField
-            label="Próximo plantão" type="date"
-            value={form.nextShift}
-            onChange={(e) => setForm((f) => ({ ...f, nextShift: e.target.value }))}
-          />
-        </form>
-      </Modal>
+      {aba === 'feriados' && <ScheduleHolidaysTab ano={ano} setAno={setAno} />}
     </div>
   );
 }

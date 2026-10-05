@@ -1,0 +1,161 @@
+/* ============================================================
+   AUREAN RT — Escala de trabalho
+   Grade semanal (segunda a domingo), uma linha por posto. A
+   mesma grade vai para a tela e para o papel; só o cromo muda.
+   ============================================================ */
+
+.sched { display: flex; flex-direction: column; gap: var(--space-5); }
+
+.sched__week {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  background: var(--surface);
+  font-size: var(--text-sm);
+}
+.sched__week th, .sched__week td {
+  border: 1px solid var(--border);
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.sched__corner { width: 150px; border: none !important; background: transparent; }
+
+/* Cabeçalho do dia */
+.sched__day {
+  padding: var(--space-2) var(--space-1) !important;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-weight: var(--weight-medium);
+  line-height: 1.2;
+}
+.sched__num { display: block; font-size: var(--text-md); color: var(--text-strong); font-weight: var(--weight-semibold); }
+.sched__dow { display: block; font-size: var(--text-2xs); letter-spacing: var(--tracking-caps); }
+.sched__holiday {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--warning-muted);
+  color: var(--warning-text);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.sched__day--weekend { background: var(--gray-100); }
+.sched__day--out { background: transparent; border-color: transparent !important; }
+.sched__day--today .sched__num { color: var(--primary); }
+.sched__day--today { box-shadow: inset 0 -2px 0 var(--primary); }
+
+/* Rótulo do posto */
+.sched__label {
+  width: 150px;
+  padding: var(--space-2) var(--space-3) !important;
+  text-align: left !important;
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+  background: var(--gray-50);
+  line-height: 1.25;
+}
+.sched__label small { display: block; font-weight: var(--weight-regular); color: var(--text-muted); font-size: var(--text-xs); }
+.sched__label[data-cat='cuidadora'] { background: var(--primary-subtle); }
+
+/* Células */
+.sched__cell { height: 46px; }
+.sched__cell--weekend { background: var(--gray-25); }
+.sched__cell--out { background: transparent; border-color: transparent !important; }
+.sched__cell--empty { background-image: none; }
+.sched__cell--holiday { background: var(--warning-subtle); color: var(--warning-text); }
+.sched__cell--off em, .sched__cell--holiday em { font-style: italic; color: var(--text-muted); font-size: var(--text-xs); }
+.sched__cell--holiday em { color: var(--warning-text); }
+.sched__cell--gap { background: var(--danger-subtle); }
+.sched__gap { color: var(--danger-text); font-size: var(--text-xs); font-weight: var(--weight-medium); }
+.sched__person { display: block; font-weight: var(--weight-medium); color: var(--text-strong); }
+.sched__cell small { display: block; font-size: 10.5px; color: var(--text-muted); line-height: 1.15; }
+.sched__note { font-style: italic; }
+.sched__cell--manual { box-shadow: inset 3px 0 0 var(--primary); }
+
+.sched__btn {
+  width: 100%; height: 100%; min-height: 46px;
+  padding: 4px;
+  background: transparent; border: none; font: inherit; color: inherit;
+  cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  transition: background-color var(--duration-fast);
+}
+.sched__btn:hover { background: var(--primary-subtle); }
+.sched__btn:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+.sched-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sched-scroll .sched { min-width: 760px; }
+
+/* ---------- Faixa de navegação do mês ---------- */
+.sched-nav { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); }
+.sched-nav__title { font-size: var(--text-xl); font-weight: var(--weight-semibold); color: var(--text-strong); min-width: 11rem; text-align: center; }
+
+.sched-legend { display: flex; flex-wrap: wrap; gap: var(--space-4); font-size: var(--text-xs); color: var(--text-muted); }
+.sched-legend__item { display: inline-flex; align-items: center; gap: 6px; }
+.sched-legend__swatch { width: 14px; height: 14px; border: 1px solid var(--border-strong); border-radius: 3px; }
+
+/* ---------- Documento impresso ---------- */
+.schedule-doc {
+  background: #fff; color: #000;
+  font-family: Arial, Helvetica, sans-serif;
+  padding: var(--space-8);
+}
+.schedule-doc__top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-5); }
+.schedule-doc__title { font-size: 14pt; font-weight: 700; }
+.schedule-doc__sub { font-size: 10pt; color: #333; margin-top: 2px; }
+.schedule-doc__logo { height: 50px; width: auto; }
+.schedule-doc__bottom { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--space-6); margin-top: var(--space-8); break-inside: avoid; }
+.schedule-doc__sign { width: 62%; max-width: 360px; }
+.schedule-doc__line { border-bottom: 1px solid #000; height: 28px; }
+.schedule-doc__sign-name { margin-top: 4px; font-weight: 600; font-size: 10pt; }
+.schedule-doc__sign-role { font-size: 9pt; color: #333; min-height: 1.2em; }
+.schedule-doc__date { font-size: 10pt; white-space: nowrap; padding-bottom: 2px; }
+.schedule-doc__foot { margin-top: var(--space-4); font-size: 8pt; color: #444; display: flex; justify-content: space-between; gap: var(--space-4); }
+
+/* Margens próprias da escala: o mês de 6 semanas precisa caber numa folha. */
+@page escala { size: A4 portrait; margin: 8mm 12mm; }
+
+@media print {
+  .schedule-doc { padding: 0; page: escala; }
+  .schedule-doc__top { margin-bottom: 3mm; }
+  .schedule-doc__title { font-size: 13pt; }
+  .schedule-doc__sub { font-size: 9pt; }
+  .schedule-doc__logo { height: 11mm; }
+  .schedule-doc__foot { margin-top: 2mm; font-size: 7.5pt; }
+  .schedule-doc__bottom { margin-top: 3.5mm; }
+  .schedule-doc__line { height: 9mm; }
+  .schedule-doc__sign-name { font-size: 9pt; margin-top: 1mm; }
+  .schedule-doc__sign-role { font-size: 8pt; }
+  .schedule-doc__date { font-size: 9pt; }
+  /* Assinatura eletrônica compacta: marca, depois nome · cargo · registro, depois o carimbo. */
+  .schedule-doc .signature { margin: 0; display: flex; flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0 2mm; text-align: left; }
+  .schedule-doc .signature__mark { flex-basis: 100%; font-size: 14pt; line-height: 1.1; }
+  .schedule-doc .signature__name, .schedule-doc .signature__role, .schedule-doc .signature__council { font-size: 8.5pt; }
+  .schedule-doc .signature__role::before, .schedule-doc .signature__council::before { content: '·'; margin-right: 2mm; }
+  .schedule-doc .signature__stamp { flex-basis: 100%; font-size: 6.5pt; color: #444; margin-top: 0.6mm; }
+  .schedule-doc .sched { gap: 2mm; }
+  .schedule-doc .sched__week { font-size: 8pt; break-inside: avoid; page-break-inside: avoid; }
+  .schedule-doc .sched__corner, .schedule-doc .sched__label { width: 38mm; }
+  .schedule-doc .sched__label { padding: 0.6mm 1.6mm !important; font-size: 7.5pt; }
+  /* No papel, nome e horário na mesma linha: linhas mais baixas, mês numa página. */
+  .schedule-doc .sched__label small { display: inline; margin-left: 1mm; font-size: 7pt; }
+  .schedule-doc .sched__cell { height: 5.2mm; }
+  .schedule-doc .sched__day { padding: 0.6mm 0 !important; }
+  .schedule-doc .sched__num { font-size: 9pt; }
+  .schedule-doc .sched__dow { font-size: 6.5pt; }
+  .schedule-doc .sched__cell small { font-size: 6.5pt; }
+  .schedule-doc .sched__week th, .schedule-doc .sched__week td { border-color: #888; }
+  .schedule-doc .sched__day, .schedule-doc .sched__label, .schedule-doc .sched__cell--holiday,
+  .schedule-doc .sched__cell--weekend, .schedule-doc .sched__day--weekend {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .schedule-doc .sched__cell--manual { box-shadow: none; }
+  .schedule-doc .sched__label[data-cat='cuidadora'] { background: #EEF1F2; }
+  .schedule-doc .sched__cell--holiday { background: #F3F3F3; color: #444; }
+  .schedule-doc .sched__holiday { background: #E4E4E4; color: #333; }
+  .schedule-doc .sched__cell--gap { background: #fff; }
+}
