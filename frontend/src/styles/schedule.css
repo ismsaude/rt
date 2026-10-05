@@ -6,25 +6,48 @@
 
 .sched { display: flex; flex-direction: column; gap: var(--space-5); }
 
+.sched { --sched-line: var(--gray-300); }
+
+/*
+ * Bordas: modelo "separate", cada célula desenha só as suas linhas
+ * (direita e embaixo; cabeçalho também em cima; rótulo também à esquerda).
+ * O modelo "collapse" resolvia conflitos entre células vizinhas de forma
+ * imprevisível e deixava linhas faltando ao lado de células vazias.
+ * Células de dias que não são do mês não desenham nada.
+ */
 .sched__week {
   width: 100%;
   table-layout: fixed;
-  border-collapse: collapse;
-  background: var(--surface);
+  border-collapse: separate;
+  border-spacing: 0;
+  background: transparent;
   font-size: var(--text-sm);
 }
 .sched__week th, .sched__week td {
-  border: 1px solid var(--gray-200, var(--border));
+  border: 0;
   padding: 0;
   text-align: center;
   vertical-align: middle;
 }
+.sched__week .sched__day,
+.sched__week .sched__cell,
+.sched__week .sched__label {
+  border-right: 1px solid var(--sched-line);
+  border-bottom: 1px solid var(--sched-line);
+}
+.sched__week .sched__day { border-top: 1px solid var(--sched-line); }
+.sched__week .sched__label { border-left: 1px solid var(--sched-line); }
+.sched__week tbody tr:first-child .sched__label { border-top: 1px solid var(--sched-line); }
+.sched__week .sched__day--after-out,
+.sched__week .sched__cell--after-out { border-left: 1px solid var(--sched-line); }
+.sched__week .sched__cell { background-color: var(--surface); }
+.sched__week .sched__day--out,
+.sched__week .sched__cell--out { border: 0; background: transparent; }
 
 /* O canto mostra a semana: preenche o espaço e orienta a leitura */
 .sched__corner {
   width: 150px;
   background: transparent;
-  border-color: transparent !important;
   font-size: var(--text-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: var(--tracking-caps);
@@ -57,7 +80,6 @@
   letter-spacing: 0.03em;
 }
 .sched__day--weekend { background: var(--gray-100); }
-.sched__day--out { background: var(--gray-100); }
 .sched__day--today .sched__num { color: var(--primary); }
 .sched__day--today { box-shadow: inset 0 -2px 0 var(--primary); }
 
@@ -81,7 +103,6 @@
 /* Células */
 .sched__cell { height: 46px; }
 .sched__cell--weekend { background: var(--gray-25); }
-.sched__cell--out { background: var(--gray-100); }
 .sched__cell--empty { background-image: none; }
 .sched__cell--holiday { background: var(--warning-subtle); color: var(--warning-text); }
 .sched__cell--off em, .sched__cell--holiday em { font-style: italic; color: var(--text-muted); font-size: var(--text-xs); }
@@ -171,15 +192,14 @@
   .schedule-doc .sched[data-weeks='4'] .sched__week { font-size: 9pt; }
   .schedule-doc .sched[data-weeks='4'] .sched__cell { height: 7.8mm; }
   .schedule-doc .sched[data-weeks='4'] .sched__label { font-size: 8pt; }
-  .schedule-doc .sched__week th, .schedule-doc .sched__week td { border-color: #A3ABAF; }
+  .schedule-doc .sched { --sched-line: #9AA3A8; }
   .schedule-doc .sched__day, .schedule-doc .sched__label, .schedule-doc .sched__cell--holiday,
   .schedule-doc .sched__cell--weekend, .schedule-doc .sched__day--weekend {
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .schedule-doc .sched__cell--manual { box-shadow: none; }
-  .schedule-doc .sched__corner { border-color: transparent !important; font-size: 6.5pt; padding: 0 0 0.8mm 0 !important; }
+  .schedule-doc .sched__corner { font-size: 6.5pt; padding: 0 0 0.8mm 0 !important; }
   .schedule-doc .sched__week th.sched__corner { background: transparent; }
-  .schedule-doc .sched__cell--out, .schedule-doc .sched__day--out { background: #EFF1F2; }
   .schedule-doc .sched__cell--night { background-image: linear-gradient(#F6F7F8, #F6F7F8); }
   .schedule-doc .sched__cell--night.sched__cell--weekend { background-image: linear-gradient(#EEF0F1, #EEF0F1); }
   .schedule-doc .sched__label { box-shadow: inset 1.1mm 0 0 #8FA3A8; }

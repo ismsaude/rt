@@ -37,6 +37,7 @@ export default function ScheduleGrid({ monthKey, entradas, feriados, onCellClick
                       !data && 'sched__day--out',
                       [5, 6].includes(col) && 'sched__day--weekend',
                       data === hoje && 'sched__day--today',
+                      data && col > 0 && !semana[col - 1] && 'sched__day--after-out',
                     ].filter(Boolean).join(' ')}
                   >
                     {data && (
@@ -90,6 +91,7 @@ export default function ScheduleGrid({ monthKey, entradas, feriados, onCellClick
                     `sched__cell--${tom}`,
                     [5, 6].includes(col) && 'sched__cell--weekend',
                     linha.noturno && 'sched__cell--night',
+                    col > 0 && !semana[col - 1] && 'sched__cell--after-out',
                     e?.manual && 'sched__cell--manual',
                   ].filter(Boolean).join(' ');
 
