@@ -14,13 +14,26 @@
   font-size: var(--text-sm);
 }
 .sched__week th, .sched__week td {
-  border: 1px solid var(--border);
+  border: 1px solid var(--gray-200, var(--border));
   padding: 0;
   text-align: center;
   vertical-align: middle;
 }
 
-.sched__corner { width: 150px; border: none !important; background: transparent; }
+/* O canto mostra a semana: preenche o espaço e orienta a leitura */
+.sched__corner {
+  width: 150px;
+  background: transparent;
+  border-color: transparent !important;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  text-align: left !important;
+  padding: 0 var(--space-3) var(--space-2) 0 !important;
+  vertical-align: bottom !important;
+}
 
 /* Cabeçalho do dia */
 .sched__day {
@@ -44,7 +57,7 @@
   letter-spacing: 0.03em;
 }
 .sched__day--weekend { background: var(--gray-100); }
-.sched__day--out { background: transparent; border-color: transparent !important; }
+.sched__day--out { background: var(--gray-100); }
 .sched__day--today .sched__num { color: var(--primary); }
 .sched__day--today { box-shadow: inset 0 -2px 0 var(--primary); }
 
@@ -59,12 +72,16 @@
   line-height: 1.25;
 }
 .sched__label small { display: block; font-weight: var(--weight-regular); color: var(--text-muted); font-size: var(--text-xs); }
-.sched__label[data-cat='cuidadora'] { background: var(--primary-subtle); }
+.sched__label { box-shadow: inset 3px 0 0 var(--gray-300, var(--border-strong)); }
+.sched__label[data-cat='cuidadora'] { background: var(--primary-subtle); box-shadow: inset 3px 0 0 var(--primary); }
+.sched__label[data-turno='noite'] { background: var(--gray-100); box-shadow: inset 3px 0 0 var(--gray-700, #3E4A50); }
+.sched__cell--night { background-image: linear-gradient(var(--gray-50), var(--gray-50)); }
+.sched__cell--night.sched__cell--weekend { background-image: linear-gradient(var(--gray-100), var(--gray-100)); }
 
 /* Células */
 .sched__cell { height: 46px; }
 .sched__cell--weekend { background: var(--gray-25); }
-.sched__cell--out { background: transparent; border-color: transparent !important; }
+.sched__cell--out { background: var(--gray-100); }
 .sched__cell--empty { background-image: none; }
 .sched__cell--holiday { background: var(--warning-subtle); color: var(--warning-text); }
 .sched__cell--off em, .sched__cell--holiday em { font-style: italic; color: var(--text-muted); font-size: var(--text-xs); }
@@ -148,12 +165,29 @@
   .schedule-doc .sched__num { font-size: 9pt; }
   .schedule-doc .sched__dow { font-size: 6.5pt; }
   .schedule-doc .sched__cell small { font-size: 6.5pt; }
-  .schedule-doc .sched__week th, .schedule-doc .sched__week td { border-color: #888; }
+  /* Menos semanas, mais folga: linhas mais altas e letra maior, sempre em 1 folha. */
+  .schedule-doc .sched[data-weeks='5'] .sched__week { font-size: 8.5pt; }
+  .schedule-doc .sched[data-weeks='5'] .sched__cell { height: 6.2mm; }
+  .schedule-doc .sched[data-weeks='4'] .sched__week { font-size: 9pt; }
+  .schedule-doc .sched[data-weeks='4'] .sched__cell { height: 7.8mm; }
+  .schedule-doc .sched[data-weeks='4'] .sched__label { font-size: 8pt; }
+  .schedule-doc .sched__week th, .schedule-doc .sched__week td { border-color: #A3ABAF; }
   .schedule-doc .sched__day, .schedule-doc .sched__label, .schedule-doc .sched__cell--holiday,
   .schedule-doc .sched__cell--weekend, .schedule-doc .sched__day--weekend {
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .schedule-doc .sched__cell--manual { box-shadow: none; }
+  .schedule-doc .sched__corner { border-color: transparent !important; font-size: 6.5pt; padding: 0 0 0.8mm 0 !important; }
+  .schedule-doc .sched__week th.sched__corner { background: transparent; }
+  .schedule-doc .sched__cell--out, .schedule-doc .sched__day--out { background: #EFF1F2; }
+  .schedule-doc .sched__cell--night { background-image: linear-gradient(#F6F7F8, #F6F7F8); }
+  .schedule-doc .sched__cell--night.sched__cell--weekend { background-image: linear-gradient(#EEF0F1, #EEF0F1); }
+  .schedule-doc .sched__label { box-shadow: inset 1.1mm 0 0 #8FA3A8; }
+  .schedule-doc .sched__label[data-cat='cuidadora'] { box-shadow: inset 1.1mm 0 0 #3D8F99; }
+  .schedule-doc .sched__label[data-turno='noite'] { background: #E8EBED; box-shadow: inset 1.1mm 0 0 #445056; }
+  .schedule-doc .sched__cell--night, .schedule-doc .sched__cell--out, .schedule-doc .sched__day--out {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
   .schedule-doc .sched__label[data-cat='cuidadora'] { background: #EEF1F2; }
   .schedule-doc .sched__cell--holiday { background: #F3F3F3; color: #444; }
   .schedule-doc .sched__holiday { background: #E4E4E4; color: #333; }

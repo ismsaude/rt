@@ -262,7 +262,12 @@ export function linhasDoMes(entradas) {
         position: e.shift_position,
         meal_rule: e.shift_meal_rule,
         meal_hours: e.shift_meal_hours,
+        noturno: false,
       });
+    }
+    // Posto noturno: o plantão termina no dia seguinte (saída <= entrada).
+    if (e.kind === 'plantao' && e.start_time && e.end_time && e.end_time <= e.start_time) {
+      mapa.get(e.shift_id).noturno = true;
     }
   });
   return [...mapa.values()].sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));

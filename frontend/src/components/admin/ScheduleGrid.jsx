@@ -21,12 +21,12 @@ export default function ScheduleGrid({ monthKey, entradas, feriados, onCellClick
   const hoje = toISODate(new Date());
 
   return (
-    <div className="sched">
-      {semanas.map((semana) => (
+    <div className="sched" data-weeks={semanas.length}>
+      {semanas.map((semana, indice) => (
         <table className="sched__week" key={semana.find(Boolean)}>
           <thead>
             <tr>
-              <th className="sched__corner" />
+              <th className="sched__corner">{indice + 1}ª semana</th>
               {semana.map((data, col) => {
                 const feriado = data && feriados.get(data);
                 return (
@@ -55,7 +55,7 @@ export default function ScheduleGrid({ monthKey, entradas, feriados, onCellClick
           <tbody>
             {linhas.map((linha) => (
               <tr key={linha.shift_id}>
-                <th className="sched__label" data-cat={linha.category}>
+                <th className="sched__label" data-cat={linha.category} data-turno={linha.noturno ? 'noite' : undefined}>
                   <span>{linha.name}</span>
                   {linha.hours && <small>{linha.hours}</small>}
                 </th>
@@ -89,6 +89,7 @@ export default function ScheduleGrid({ monthKey, entradas, feriados, onCellClick
                     'sched__cell',
                     `sched__cell--${tom}`,
                     [5, 6].includes(col) && 'sched__cell--weekend',
+                    linha.noturno && 'sched__cell--night',
                     e?.manual && 'sched__cell--manual',
                   ].filter(Boolean).join(' ');
 
