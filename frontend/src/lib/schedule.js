@@ -203,6 +203,8 @@ export function lancamentoPrevisto(posto, dataISO, feriados) {
     shift_hours: rotuloHorario(posto.start_time, posto.end_time),
     shift_category: posto.category,
     shift_position: posto.position,
+    shift_meal_rule: posto.meal_rule || 'nenhuma',
+    shift_meal_hours: posto.meal_hours ?? 1,
     entry_date: dataISO,
     manual: false,
   };
@@ -258,6 +260,8 @@ export function linhasDoMes(entradas) {
         hours: e.shift_hours,
         category: e.shift_category,
         position: e.shift_position,
+        meal_rule: e.shift_meal_rule,
+        meal_hours: e.shift_meal_hours,
       });
     }
   });
@@ -356,7 +360,7 @@ export function postosPadrao({
     {
       name: 'Cuidadora diurno', category: 'cuidadora', pattern: '12x36',
       start_time: '07:00', end_time: '19:00', weekdays: [0, 1, 2, 3, 4, 5, 6],
-      weekday_hours: {}, works_on_holidays: true,
+      weekday_hours: {}, works_on_holidays: true, meal_rule: 'fds_feriado', meal_hours: 1,
       people: girar(d, ancoraDiurno), anchor_date: dataAncora, position: 1,
     },
     {
@@ -380,7 +384,7 @@ export function postosPadrao({
     {
       name: 'Cuidadora noturno', category: 'cuidadora', pattern: '12x36',
       start_time: '19:00', end_time: '07:00', weekdays: [0, 1, 2, 3, 4, 5, 6],
-      weekday_hours: {}, works_on_holidays: true,
+      weekday_hours: {}, works_on_holidays: true, meal_rule: 'sempre', meal_hours: 1,
       people: girar(n, ancoraNoturno), anchor_date: dataAncora, position: 5,
     },
   ];
@@ -406,6 +410,8 @@ export async function salvarPosto(posto) {
     weekdays: posto.weekdays,
     weekday_hours: posto.weekday_hours || {},
     works_on_holidays: !!posto.works_on_holidays,
+    meal_rule: posto.meal_rule || 'nenhuma',
+    meal_hours: Number(posto.meal_hours ?? 1),
     people: posto.people || [],
     anchor_date: posto.pattern === '12x36' ? (posto.anchor_date || null) : null,
     position: posto.position ?? 0,
@@ -476,6 +482,7 @@ export function salvarLancamentoDeEscala(l) {
     shift_hours: l.shift_hours,
     shift_category: l.shift_category,
     shift_position: l.shift_position,
+    ...(l.shift_meal_rule ? { shift_meal_rule: l.shift_meal_rule, shift_meal_hours: l.shift_meal_hours } : {}),
     kind: l.kind,
     user_id: l.user_id || null,
     person_name: l.person_name || null,
@@ -624,4 +631,72 @@ export async function acertarRevezamento({ postos, dataISO, escolhas }) {
     if (error) return { error };
   }
   return { error: null };
+}
+
+/* ------------------------------------------------------------------ */
+/* Horário de refeição remunerado                                     */
+/* ------------------------------------------------------------------ */
+
+export const REGRAS_REFEICAO = [
+  { value: 'nenhuma', label: 'Não dá direito' },
+  { value: 'sempre', label: 'Todo plantão (ex.: noturno, a pessoa não pode sair para jantar)' },
+  { value: 'fds_feriado', label: 'Só sábado, domingo e feriado (ex.: diurno, sozinha na casa)' },
+];
+
+/**
+ * Quem tem direito à hora de refeição remunerada no mês, e por quê.
+ *
+ * A regra é do posto (cópia gravada em cada lançamento; se faltar, vale a
+ * regra atual do posto). Cada plantão dá no máximo uma vez a hora, mesmo
+ * que caia em sábado E feriado.
+ *
+ * @returns {Array<{ nome, horas, noturnos, fins, feriados, itens: Array }>}
+ */
+export function resumoRefeicao(entradas, feriados, postos = []) {
+  const mapa = new Map();
+
+  entradas.forEach((e) => {
+    if (e.kind !== 'plantao' || !e.person_name) return;
+
+    const posto = postos.find((p) => p.id === e.shift_id);
+    const regra = e.shift_meal_rule || posto?.meal_rule || 'nenhuma';
+    const horas = Number(e.shift_meal_hours ?? posto?.meal_hours ?? 1);
+    if (regra === 'nenhuma' || !horas) return;
+
+    const diaSemana = dia(e.entry_date).getDay();
+    const ehFeriado = feriados.has(e.entry_date);
+    const ehFimDeSemana = diaSemana === 0 || diaSemana === 6;
+
+    let motivo = null;
+    if (regra === 'sempre') {
+      const atravessaNoite = e.start_time && e.end_time && e.end_time <= e.start_time;
+      motivo = atravessaNoite ? 'noturno' : 'plantao';
+    } else if (regra === 'fds_feriado') {
+      if (ehFeriado) motivo = 'feriado';
+      else if (ehFimDeSemana) motivo = 'fim de semana';
+    }
+    if (!motivo) return;
+
+    const item = mapa.get(e.person_name) || {
+      nome: e.person_name, horas: 0, noturnos: 0, plantoes: 0, fins: 0, feriados: 0, itens: [],
+    };
+    item.horas += horas;
+    if (motivo === 'noturno') item.noturnos += 1;
+    else if (motivo === 'plantao') item.plantoes += 1;
+    else if (motivo === 'feriado') item.feriados += 1;
+    else item.fins += 1;
+    item.itens.push({ data: e.entry_date, motivo, posto: e.shift_name, horas });
+    mapa.set(e.person_name, item);
+  });
+
+  return [...mapa.values()]
+    .map((p) => ({ ...p, itens: p.itens.sort((a, b) => a.data.localeCompare(b.data)) }))
+    .sort((a, b) => b.horas - a.horas || a.nome.localeCompare(b.nome));
+}
+
+/** O resumo no formato que a casa usa para repassar ao pagamento. */
+export function textoRefeicao(titulo, resumo, todosNomes = []) {
+  const horas = (h) => `${String(h).replace('.', ',')}h`;
+  const linhas = resumo.map((p) => `${nomeCurto(p.nome, todosNomes)} - ${horas(p.horas)} (horário refeição remunerado)`);
+  return [titulo, ...(linhas.length ? linhas : ['Ninguém com direito neste mês.'])].join('\n');
 }

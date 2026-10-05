@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArrowDown, ArrowUp, Pencil, Plus, Repeat, Trash2, Users, Wand2 } from 'lucide-react';
 import {
-  COLUNAS_SEMANA, DIA_SEMANA_CURTO, acertarRevezamento, apagarPosto, nomeCurto, postosPadrao,
+  COLUNAS_SEMANA, DIA_SEMANA_CURTO, REGRAS_REFEICAO, acertarRevezamento, apagarPosto, nomeCurto, postosPadrao,
   rotuloHorario, salvarPosto,
 } from '../../lib/schedule';
 import { toISODate } from '../../lib/format';
@@ -219,6 +219,23 @@ function ShiftModal({ posto, equipe, onClose, onSaved }) {
           </div>
         )}
 
+        <div className="field-row">
+          <SelectField
+            label="Refeição remunerada (1h extra)"
+            value={f.meal_rule || 'nenhuma'}
+            onChange={set('meal_rule')}
+            hint="Para quem não pode sair para comer. Soma no quadro ao lado da escala."
+          >
+            {REGRAS_REFEICAO.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </SelectField>
+          {(f.meal_rule || 'nenhuma') !== 'nenhuma' && (
+            <TextField
+              label="Horas por plantão" type="number" min="0.5" max="4" step="0.5"
+              value={f.meal_hours ?? 1} onChange={set('meal_hours')}
+            />
+          )}
+        </div>
+
         <label className="checkbox">
           <input type="checkbox" checked={f.works_on_holidays}
             onChange={(e) => setF((s) => ({ ...s, works_on_holidays: e.target.checked }))} />
@@ -417,6 +434,7 @@ export default function ScheduleShiftsTab({ postos, equipe, onChanged }) {
   const novo = () => setEditando({
     name: '', category: 'cuidadora', pattern: 'semanal', start_time: '08:00', end_time: '17:00',
     weekdays: [1, 2, 3, 4, 5], weekday_hours: {}, works_on_holidays: false,
+    meal_rule: 'nenhuma', meal_hours: 1,
     people: [], anchor_date: null, position: postos.length + 1, active: true,
   });
 

@@ -16,6 +16,7 @@ import {
 } from '../ui';
 import ScheduleEntryModal from './ScheduleEntryModal';
 import ScheduleGrid from './ScheduleGrid';
+import ScheduleMealPanel from './ScheduleMealPanel';
 import SchedulePrint from './SchedulePrint';
 
 export default function ScheduleMonthTab({
@@ -288,37 +289,44 @@ export default function ScheduleMonthTab({
             />
           </StatGrid>
 
-          <Card>
-            <CardHeader
-              title="Escala do mês"
-              subtitle={executada ? 'Escala fechada: para alterar, reabra pelo aviso acima.' : 'Toque em um dia para trocar a pessoa, marcar folga ou mudar o horário.'}
-              icon={CalendarClock}
-            />
-            <CardBody>
-              <div className="sched-scroll">
-                <ScheduleGrid
-                  monthKey={monthKey} entradas={entradas} feriados={feriados}
-                  onCellClick={executada ? undefined : abrirDia}
-                  todosNomes={equipe.map((u) => u.name)}
-                />
-              </div>
+          <div className="sched-layout">
+            <Card>
+              <CardHeader
+                title="Escala do mês"
+                subtitle={executada ? 'Escala fechada: para alterar, reabra pelo aviso acima.' : 'Toque em um dia para trocar a pessoa, marcar folga ou mudar o horário.'}
+                icon={CalendarClock}
+              />
+              <CardBody>
+                <div className="sched-scroll">
+                  <ScheduleGrid
+                    monthKey={monthKey} entradas={entradas} feriados={feriados}
+                    onCellClick={executada ? undefined : abrirDia}
+                    todosNomes={equipe.map((u) => u.name)}
+                  />
+                </div>
 
-              <div className="sched-legend" style={{ marginTop: 'var(--space-4)' }}>
-                <span className="sched-legend__item">
-                  <span className="sched-legend__swatch" style={{ background: 'var(--warning-subtle)' }} />
-                  Feriado: só os plantões 12x36 trabalham
-                </span>
-                <span className="sched-legend__item">
-                  <span className="sched-legend__swatch" style={{ boxShadow: 'inset 3px 0 0 var(--primary)' }} />
-                  Ajustado à mão
-                </span>
-                <span className="sched-legend__item">
-                  <span className="sched-legend__swatch" style={{ background: 'var(--danger-subtle)' }} />
-                  Sem ninguém escalado
-                </span>
-              </div>
-            </CardBody>
-          </Card>
+                <div className="sched-legend" style={{ marginTop: 'var(--space-4)' }}>
+                  <span className="sched-legend__item">
+                    <span className="sched-legend__swatch" style={{ background: 'var(--warning-subtle)' }} />
+                    Feriado: só os plantões 12x36 trabalham
+                  </span>
+                  <span className="sched-legend__item">
+                    <span className="sched-legend__swatch" style={{ boxShadow: 'inset 3px 0 0 var(--primary)' }} />
+                    Ajustado à mão
+                  </span>
+                  <span className="sched-legend__item">
+                    <span className="sched-legend__swatch" style={{ background: 'var(--danger-subtle)' }} />
+                    Sem ninguém escalado
+                  </span>
+                </div>
+              </CardBody>
+            </Card>
+
+            <ScheduleMealPanel
+              monthKey={monthKey} entradas={entradas} feriados={feriados} postos={postos}
+              todosNomes={equipe.map((u) => u.name)}
+            />
+          </div>
 
           {avisos.length > 0 && (
             <Alert tone="warning" icon={CircleAlert} title="Pontos de atenção">

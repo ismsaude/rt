@@ -159,3 +159,29 @@
   .schedule-doc .sched__holiday { background: #E4E4E4; color: #333; }
   .schedule-doc .sched__cell--gap { background: #fff; }
 }
+
+/* ---------- Escala + quadro de refeição lado a lado ---------- */
+.sched-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+@media (min-width: 1360px) {
+  .sched-layout { grid-template-columns: minmax(0, 1fr) 300px; }
+  .sched-layout .meal { position: sticky; top: var(--space-4); }
+}
+
+.meal__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.meal__item { border-bottom: 1px solid var(--border-subtle); }
+.meal__item:last-child { border-bottom: none; }
+.meal__item summary {
+  display: grid; grid-template-columns: 1fr auto; column-gap: var(--space-3);
+  padding: var(--space-3) 0; cursor: pointer; list-style: none;
+}
+.meal__item summary::-webkit-details-marker { display: none; }
+.meal__name { font-weight: var(--weight-semibold); color: var(--text-strong); }
+.meal__hours { font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; color: var(--primary-text); }
+.meal__detail { grid-column: 1 / -1; font-size: var(--text-xs); color: var(--text-muted); }
+.meal__dates { list-style: none; margin: 0 0 var(--space-3); padding: 0 0 0 var(--space-3); font-size: var(--text-xs); border-left: 2px solid var(--border); }
+.meal__dates li { display: flex; justify-content: space-between; padding: 2px 0; }
+.meal__total {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border);
+}
+.meal__total strong { font-size: var(--text-xl); font-variant-numeric: tabular-nums; }
