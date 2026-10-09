@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Camera, CheckCircle2, FileText, FileUp, Lock, LockOpen, Pencil, PenLine, Plus, Printer, Trash2, Wallet,
+  Camera, CheckCircle2, ChevronLeft, ChevronRight, FileText, FileUp, Lock, LockOpen, PackageCheck, Pencil, PenLine, Plus, Printer, Trash2, Wallet,
 } from 'lucide-react';
 import {
-  apagarLancamento, carregarConta, formatarReais, lerValor, mesDe, montarRelatorio,
+  apagarLancamento, carregarConta, EXIGIR_COMPROVANTES, faltaComprovante, pendenciasDoMes, formatarReais, lerValor, mesDe, montarRelatorio,
   novoLancamento, paraCampo, salvarLancamento, salvarMes,
 } from '../../lib/ledger';
 import { supabase } from '../../lib/supabase';
 import { removerFoto, BUCKET_COMPROVANTES } from '../../lib/photos';
+import { mesAnterior, mesSeguinte } from '../../lib/schedule';
 import { formatDate, formatMonthLabel, toISODate, toMonthKey, daysInMonth, parseMonthKey } from '../../lib/format';
 import SignatureModal from '../SignatureModal';
 import {
@@ -15,6 +16,7 @@ import {
   Segmented, SelectField, SkeletonList, Stat, StatGrid, Table, TableEmpty, TextField,
   useConfirm, useToast,
 } from '../ui';
+import FundsClosingModal from './FundsClosingModal';
 import FundsDocument from './FundsDocument';
 import FundsPrint from './FundsPrint';
 import ImportLedgerModal from './ImportLedgerModal';
@@ -121,6 +123,9 @@ function EntryModal({ entry, onClose, onSaved, residentId, monthKey }) {
     if (!form.description.trim()) e.description = 'Descreva o lançamento.';
     if (cents === null || cents <= 0) e.valor = 'Informe um valor maior que zero.';
     if (!form.entry_date) e.entry_date = 'Informe a data.';
+    if (faltaComprovante(form)) {
+      e.receipts = 'Anexe a foto do comprovante, ou marque que esta saída não tem comprovante.';
+    }
     setErros(e);
     if (Object.keys(e).length) return;
 
@@ -197,13 +202,36 @@ function EntryModal({ entry, onClose, onSaved, residentId, monthKey }) {
 
         {form.kind === 'saida' && (
           <div className="u-stack u-gap-2">
-            <span className="field__label">Nota fiscal</span>
-            <ReceiptPhotos
-              photos={form.receipts}
-              onChange={(receipts) => setForm((f) => ({ ...f, receipts }))}
-              residentId={residentId}
-              monthKey={monthKey}
-            />
+            <span className="field__label">
+              Comprovante{EXIGIR_COMPROVANTES && !form.receipt_exempt && <span className="field__required" aria-hidden="true"> *</span>}
+            </span>
+            {!form.receipt_exempt && (
+              <ReceiptPhotos
+                photos={form.receipts}
+                onChange={(receipts) => setForm((f) => ({ ...f, receipts }))}
+                residentId={residentId}
+                monthKey={monthKey}
+              />
+            )}
+            {/* Tarifa, seguro e débito automático não têm nota: a dispensa
+                é decidida na hora, lançamento a lançamento. */}
+            {!form.receipts.length && (
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={!!form.receipt_exempt}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, receipt_exempt: e.target.checked }));
+                    setErros(({ receipts, ...resto }) => resto);
+                  }}
+                />
+                <span className="checkbox__box" aria-hidden="true">✓</span>
+                <span style={{ fontSize: 'var(--text-md)' }}>
+                  Sem comprovante (tarifa bancária, seguro, débito automático)
+                </span>
+              </label>
+            )}
+            {erros.receipts && <span className="field__error">{erros.receipts}</span>}
           </div>
         )}
       </div>
@@ -227,6 +255,12 @@ export default function ResidentFunds({ currentUser }) {
   const [imprimindo, setImprimindo] = useState(null);
   const [verRelatorio, setVerRelatorio] = useState(false);
   const [importando, setImportando] = useState(false);
+  const [fechandoLote, setFechandoLote] = useState(false);
+  const [corrigindoInicial, setCorrigindoInicial] = useState(false);
+  const [digitandoExtrato, setDigitandoExtrato] = useState(false);
+
+  // Os modos de correção valem só para o mês que estava aberto.
+  useEffect(() => { setCorrigindoInicial(false); setDigitandoExtrato(false); }, [residentId, monthKey]);
 
   /* ---- Moradores ---- */
   useEffect(() => {
@@ -241,18 +275,46 @@ export default function ResidentFunds({ currentUser }) {
   const resident = residents.find((r) => r.id === residentId);
 
   /* ---- Conta do morador ---- */
-  const carregar = useCallback(async () => {
+  // `silencioso` recarrega sem trocar a tela pelo "carregando": é o caso
+  // das atualizações que chegam em tempo real enquanto a pessoa lê.
+  const carregar = useCallback(async ({ silencioso = false } = {}) => {
     if (!residentId) return;
-    setCarregando(true);
+    if (!silencioso) setCarregando(true);
     const { error, lancamentos, meses } = await carregarConta(residentId);
     if (error) {
-      toast.error('Não foi possível carregar a conta. A migração 014 foi aplicada?');
+      if (!silencioso) toast.error('Não foi possível carregar a conta. A migração 014 foi aplicada?');
+      return;
     }
     setConta({ lancamentos, meses });
     setCarregando(false);
   }, [residentId, toast]);
 
   useEffect(() => { carregar(); }, [carregar]);
+
+  /* ---- Tempo real ----
+   * Lançamento feito em outra aba, outro computador ou direto no banco
+   * aparece sem recarregar a página. Uma importação gera dezenas de
+   * eventos seguidos; a espera agrupa tudo numa única leitura.
+   * Exige a migração 017 (tabelas na publicação supabase_realtime). */
+  useEffect(() => {
+    if (!residentId) return undefined;
+    let espera;
+    const aoMudar = (payload) => {
+      const dono = payload.new?.resident_id ?? payload.old?.resident_id;
+      if (dono && dono !== residentId) return;
+      clearTimeout(espera);
+      espera = setTimeout(() => carregar({ silencioso: true }), 400);
+    };
+    const canal = supabase
+      .channel(`recursos-${residentId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ResidentLedger' }, aoMudar)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'LedgerMonth' }, aoMudar)
+      .subscribe();
+    return () => {
+      clearTimeout(espera);
+      supabase.removeChannel(canal);
+    };
+  }, [residentId, carregar]);
 
   const relatorio = useMemo(
     () => montarRelatorio(monthKey, conta.lancamentos, conta.meses),
@@ -287,6 +349,12 @@ export default function ResidentFunds({ currentUser }) {
     });
     return true;
   }, [residentId, monthKey, toast]);
+
+  const marcarSemConta = async (valor) => {
+    const { error } = await supabase.from('Resident').update({ no_bank_account: valor }).eq('id', residentId);
+    if (error) { toast.error(`Não foi possível salvar: ${error.message}`); return; }
+    setResidents((lista) => lista.map((r) => (r.id === residentId ? { ...r, no_bank_account: valor } : r)));
+  };
 
   /* ---- Lançamentos ---- */
   const abrirNovo = () => setEntry(novoLancamento({
@@ -370,10 +438,8 @@ export default function ResidentFunds({ currentUser }) {
   const totalComprovantes = relatorio.linhas.reduce((n, l) => n + l.receipts.length, 0);
 
   /* ---- Pendências para fechar ---- */
-  const pendencias = [];
-  if (!relatorio.inicial.definido) pendencias.push('informar o saldo inicial');
-  if (bancoCents == null) pendencias.push('informar o saldo final do extrato');
-  else if (diferenca !== 0) pendencias.push('zerar a diferença com o extrato');
+  const semConta = !!resident?.no_bank_account;
+  const pendencias = pendenciasDoMes({ relatorio, mes, semConta });
 
   return (
     <div className="u-stack u-gap-6">
@@ -382,6 +448,10 @@ export default function ResidentFunds({ currentUser }) {
         description="Livro-caixa da conta de cada morador e relatório mensal de benefícios."
         actions={
           <>
+            <Button variant="secondary" icon={PackageCheck} onClick={() => setFechandoLote(true)}
+              disabled={!residents.length}>
+              Fechar o mês
+            </Button>
             <Button variant="secondary" icon={FileUp} onClick={() => setImportando(true)}
               disabled={!resident || fechado}>
               Importar planilha
@@ -405,7 +475,13 @@ export default function ResidentFunds({ currentUser }) {
             </SelectField>
             <div className="field">
               <span className="field__label">Mês</span>
-              <MonthPicker value={monthKey} onChange={setMonthKey} withData={mesesComDados} />
+              <span className="u-row u-gap-2">
+                <Button variant="secondary" iconOnly icon={ChevronLeft} aria-label="Mês anterior"
+                  onClick={() => setMonthKey(mesAnterior(monthKey))} />
+                <MonthPicker value={monthKey} onChange={setMonthKey} withData={mesesComDados} />
+                <Button variant="secondary" iconOnly icon={ChevronRight} aria-label="Próximo mês"
+                  onClick={() => setMonthKey(mesSeguinte(monthKey))} />
+              </span>
             </div>
           </div>
         </CardBody>
@@ -436,7 +512,7 @@ export default function ResidentFunds({ currentUser }) {
 
           <StatGrid className="funds-stats">
             <Stat label="Saldo anterior" value={relatorio.inicial.definido ? formatarReais(relatorio.inicial.centavos) : '—'}
-              hint={relatorio.inicial.definido ? (relatorio.inicial.manual ? 'informado à mão' : 'saldo final do mês anterior') : 'informe abaixo'} />
+              hint={relatorio.inicial.definido ? ({ manual: 'informado à mão', extrato: 'extrato do mês anterior', calculado: 'calculado do mês anterior' }[relatorio.inicial.origem]) : 'informe abaixo'} />
             <Stat label="Entradas" value={formatarReais(relatorio.entradas)} tone="success" />
             <Stat label="Saídas" value={formatarReais(relatorio.saidas)} tone="danger" />
             <Stat label="Saldo atual" value={formatarReais(relatorio.final)} />
@@ -485,6 +561,9 @@ export default function ResidentFunds({ currentUser }) {
                     {l.receipts.length > 0 && (
                       <Badge tone="info" icon={Camera} className="u-ml-2">{l.receipts.length}</Badge>
                     )}
+                    {faltaComprovante(l) && (
+                      <Badge tone="warning" icon={Camera} className="u-ml-2">sem comprovante</Badge>
+                    )}
                   </td>
                   <td className="table__cell-num" style={{ textAlign: 'right', color: 'var(--success-text)' }}>
                     {l.kind === 'entrada' ? formatarReais(l.cents) : ''}
@@ -520,27 +599,40 @@ export default function ResidentFunds({ currentUser }) {
             />
             <CardBody>
               <div className="funds-conferencia">
-                <ValorSalvo
-                  key={`abertura-${residentId}-${monthKey}`}
-                  label="Saldo inicial do mês (R$)"
-                  hint={relatorio.inicial.definido && !relatorio.inicial.manual
-                    ? 'Automático: vem do mês anterior. Preencha só para corrigir.'
-                    : 'Saldo anterior do extrato.'}
-                  centavos={mes?.opening_cents ?? null}
-                  placeholder={relatorio.inicial.definido ? paraCampo(relatorio.inicial.centavos) : 'Informe'}
-                  disabled={fechado}
-                  onSave={(v) => gravarMes({ opening_cents: v })}
-                />
-                <ValorSalvo
-                  key={`extrato-${residentId}-${monthKey}`}
-                  label="Saldo final no extrato (R$)"
-                  hint="Conta + aplicação automática, no último dia do mês."
-                  centavos={bancoCents}
-                  disabled={fechado}
-                  onSave={(v) => gravarMes({ bank_closing_cents: v })}
-                />
+                {/* Saldo inicial: automático (extrato ou cálculo do mês
+                    anterior). Só vira campo para corrigir uma exceção. */}
+                {relatorio.inicial.definido && !relatorio.inicial.manual && !corrigindoInicial ? (
+                  <div className="u-stack u-gap-1">
+                    <span className="field__label">Saldo inicial do mês</span>
+                    <strong className="funds-conferencia__valor">{formatarReais(relatorio.inicial.centavos)}</strong>
+                    <span className="field__hint">
+                      {relatorio.inicial.origem === 'extrato'
+                        ? `Saldo final do extrato de ${formatMonthLabel(mesAnterior(monthKey))}.`
+                        : `Calculado: ${formatMonthLabel(mesAnterior(monthKey))} ainda não foi conferido com o extrato.`}
+                    </span>
+                    {!fechado && (
+                      <Button variant="ghost" size="sm" icon={Pencil} className="u-self-start"
+                        onClick={() => setCorrigindoInicial(true)}>
+                        Corrigir
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <ValorSalvo
+                    key={`abertura-${residentId}-${monthKey}`}
+                    label="Saldo inicial do mês (R$)"
+                    hint={relatorio.inicial.manual
+                      ? 'Informado à mão. Apague para voltar ao automático.'
+                      : 'Primeiro mês: saldo anterior do extrato.'}
+                    centavos={mes?.opening_cents ?? null}
+                    placeholder={relatorio.inicial.definido ? paraCampo(relatorio.inicial.centavos) : 'Informe'}
+                    disabled={fechado}
+                    onSave={(v) => gravarMes({ opening_cents: v })}
+                  />
+                )}
+
                 <div className="u-stack u-gap-1">
-                  <span className="field__label">Saldo calculado</span>
+                  <span className="field__label">Saldo final calculado</span>
                   <strong className="funds-conferencia__valor">{formatarReais(relatorio.final)}</strong>
                   {conferido && <Badge tone="success" icon={CheckCircle2}>Conferido com o extrato</Badge>}
                   {diferenca != null && diferenca !== 0 && (
@@ -549,8 +641,43 @@ export default function ResidentFunds({ currentUser }) {
                       {diferenca > 0 ? ' a mais aqui' : ' a menos aqui'}
                     </Badge>
                   )}
-                  {diferenca == null && <Badge tone="warning">Informe o saldo do extrato</Badge>}
+                  {/* O caso comum é o extrato bater: um clique registra o saldo
+                      calculado como o lido no extrato, sem redigitar. Se depois
+                      um lançamento mudar, a diferença aparece, porque o
+                      extrato impresso não muda. */}
+                  {diferenca == null && !digitandoExtrato && !fechado && (!relatorio.inicial.definido
+                    ? <Badge tone="warning">Informe o saldo inicial</Badge>
+                    : (
+                      <div className="funds-actions">
+                        <Button variant="success" size="sm" icon={CheckCircle2}
+                          onClick={() => gravarMes({ bank_closing_cents: relatorio.final })}>
+                          Bate com o extrato
+                        </Button>
+                        <Button variant="secondary" size="sm" onClick={() => setDigitandoExtrato(true)}>
+                          Não bate
+                        </Button>
+                      </div>
+                    ))}
+                  {conferido && !fechado && (
+                    <Button variant="ghost" size="sm" className="u-self-start"
+                      onClick={() => gravarMes({ bank_closing_cents: null })}>
+                      Desfazer conferência
+                    </Button>
+                  )}
                 </div>
+
+                {/* O valor do extrato só é digitado quando difere do calculado. */}
+                {(digitandoExtrato || (bancoCents != null && !conferido)) ? (
+                  <ValorSalvo
+                    key={`extrato-${residentId}-${monthKey}`}
+                    label="Saldo final no extrato (R$)"
+                    hint="Conta + aplicação automática, no último dia do mês."
+                    placeholder="Valor do extrato"
+                    centavos={bancoCents}
+                    disabled={fechado}
+                    onSave={(v) => gravarMes({ bank_closing_cents: v })}
+                  />
+                ) : <div />}
               </div>
 
               {diferenca != null && diferenca !== 0 && (
@@ -562,15 +689,34 @@ export default function ResidentFunds({ currentUser }) {
               )}
 
               <div className="u-stack u-gap-2 u-mt-4">
-                <span className="field__label">Foto do extrato</span>
-                <ReceiptPhotos
-                  label="Fotografar extrato"
-                  photos={mes?.statement_photos || []}
-                  onChange={(statement_photos) => gravarMes({ statement_photos })}
-                  residentId={residentId}
-                  monthKey={monthKey}
-                  readOnly={fechado}
-                />
+                <span className="field__label">
+                  Foto ou PDF do extrato
+                  {EXIGIR_COMPROVANTES && !semConta && <span className="field__required" aria-hidden="true"> *</span>}
+                </span>
+                {!semConta && (
+                  <ReceiptPhotos
+                    label="Fotografar extrato"
+                    photos={mes?.statement_photos || []}
+                    onChange={(statement_photos) => gravarMes({ statement_photos })}
+                    residentId={residentId}
+                    monthKey={monthKey}
+                    readOnly={fechado}
+                  />
+                )}
+                {/* Vale para o morador, não para o mês: quem não tem conta
+                    em banco nunca terá extrato. */}
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={semConta}
+                    disabled={fechado}
+                    onChange={(e) => marcarSemConta(e.target.checked)}
+                  />
+                  <span className="checkbox__box" aria-hidden="true">✓</span>
+                  <span style={{ fontSize: 'var(--text-md)' }}>
+                    Morador sem conta em banco (não há extrato)
+                  </span>
+                </label>
               </div>
             </CardBody>
           </Card>
@@ -658,6 +804,15 @@ export default function ResidentFunds({ currentUser }) {
           Depois de assinado, os lançamentos ficam travados.
         </Alert>
       </SignatureModal>
+
+      <FundsClosingModal
+        open={fechandoLote}
+        onClose={() => setFechandoLote(false)}
+        monthKey={monthKey}
+        residents={residents}
+        currentUser={currentUser}
+        onDone={() => carregar({ silencioso: true })}
+      />
 
       {imprimindo && resident && (
         <FundsPrint

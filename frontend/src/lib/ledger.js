@@ -83,10 +83,17 @@ function ordenar(linhas) {
 /**
  * Saldo inicial do mês.
  *
- * Vale o saldo informado à mão naquele mês; se não houver, o saldo
- * final do mês anterior, e assim por diante até o primeiro mês em que
- * alguém informou um saldo. Sem nenhum, não há como saber: devolve
- * `definido: false`, e a tela pede o saldo em vez de assumir zero.
+ * Ordem de preferência:
+ *   1. o saldo informado à mão naquele mês (correção);
+ *   2. o saldo final do extrato do mês anterior, quando já conferido —
+ *      o extrato é a verdade, e assim uma diferença de um mês não
+ *      contamina os seguintes;
+ *   3. o saldo final calculado do mês anterior.
+ * A cadeia começa no primeiro mês em que alguém informou um saldo. Sem
+ * nenhum, não há como saber: devolve `definido: false`, e a tela pede o
+ * saldo em vez de assumir zero.
+ *
+ * `origem` diz de onde veio: 'manual' | 'extrato' | 'calculado'.
  */
 export function saldoInicialDoMes(monthKey, lancamentos, meses) {
   const manuais = meses
@@ -94,28 +101,32 @@ export function saldoInicialDoMes(monthKey, lancamentos, meses) {
     .map((m) => m.month)
     .sort();
 
-  if (manuais.length === 0) return { centavos: 0, definido: false, manual: false };
+  if (manuais.length === 0) return { centavos: 0, definido: false, manual: false, origem: null };
 
-  const origem = manuais[0];
+  const inicio = manuais[0];
   const porMes = {};
   lancamentos.forEach((l) => {
     const k = mesDe(l.entry_date);
     porMes[k] = (porMes[k] || 0) + efeito(l);
   });
-  const manualDe = (k) => meses.find((m) => m.month === k)?.opening_cents ?? null;
+  const doMes = (k) => meses.find((m) => m.month === k);
+  const manualDe = (k) => doMes(k)?.opening_cents ?? null;
+  const extratoDe = (k) => doMes(k)?.bank_closing_cents ?? null;
 
-  let saldo = manualDe(origem);
-  for (let k = origem; k < monthKey; k = mesSeguinte(k)) {
-    saldo += porMes[k] || 0;
+  let saldo = manualDe(inicio);
+  let origem = 'manual';
+  for (let k = inicio; k < monthKey; k = mesSeguinte(k)) {
     const proximo = mesSeguinte(k);
-    const correcao = manualDe(proximo);
-    if (correcao != null) saldo = correcao;
+    if (manualDe(proximo) != null) { saldo = manualDe(proximo); origem = 'manual'; }
+    else if (extratoDe(k) != null) { saldo = extratoDe(k); origem = 'extrato'; }
+    else { saldo += porMes[k] || 0; origem = 'calculado'; }
   }
 
   return {
     centavos: saldo,
     definido: true,
-    manual: manualDe(monthKey) != null,
+    manual: origem === 'manual',
+    origem,
   };
 }
 
@@ -151,7 +162,18 @@ export function montarRelatorio(monthKey, lancamentos, meses) {
 /* Leitura e gravação                                                 */
 /* ------------------------------------------------------------------ */
 
-const paraLancamento = (row) => ({ ...row, cents: emCentavos(row.amount), receipts: row.receipts || [] });
+const paraLancamento = (row) => ({ ...row, cents: emCentavos(row.amount), receipts: row.receipts || [], receipt_exempt: !!row.receipt_exempt });
+
+/**
+ * Liga a obrigatoriedade de comprovante nas saídas e de extrato no
+ * fechamento. Exceções: saída marcada como sem comprovante (tarifa,
+ * seguro, débito automático) e morador sem conta em banco.
+ */
+export const EXIGIR_COMPROVANTES = true;
+
+/** Saída que ainda deve a foto do comprovante (e não foi dispensada). */
+export const faltaComprovante = (l) =>
+  EXIGIR_COMPROVANTES && l.kind === 'saida' && !l.receipt_exempt && !(l.receipts || []).length;
 const paraMes = (row) => ({
   ...row,
   opening_cents: emCentavos(row.opening_balance),
@@ -184,6 +206,7 @@ export function novoLancamento({ residentId, dataISO, author }) {
     cents: null,
     obs: '',
     receipts: [],
+    receipt_exempt: false,
     author_name: author || null,
   };
 }
@@ -199,6 +222,7 @@ export async function salvarLancamento(l) {
     amount: emNumeric(l.cents),
     obs: l.obs?.trim() || null,
     receipts: l.receipts || [],
+    receipt_exempt: l.kind === 'saida' && !!l.receipt_exempt,
     author_name: l.author_name,
     updated_at: new Date().toISOString(),
   };
@@ -242,4 +266,69 @@ export async function salvarMes({ residentId, monthKey, campos }) {
   if ('statement_photos' in campos) payload.statement_photos = campos.statement_photos;
 
   return supabase.from('LedgerMonth').upsert(payload, { onConflict: 'resident_id,month' });
+}
+
+/* ------------------------------------------------------------------ */
+/* Fechamento                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * O que ainda impede fechar e assinar o mês de um morador.
+ * Lista vazia = pronto para assinar. É a mesma regra na tela do
+ * morador e no fechamento em lote.
+ */
+export function pendenciasDoMes({ relatorio, mes, semConta }) {
+  const pendencias = [];
+  const banco = mes?.bank_closing_cents ?? null;
+  if (!relatorio.inicial.definido) pendencias.push('informar o saldo inicial');
+  if (banco == null) pendencias.push('confirmar o saldo final com o extrato');
+  else if (relatorio.final !== banco) pendencias.push('zerar a diferença com o extrato');
+  const semComprovante = relatorio.linhas.filter(faltaComprovante).length;
+  if (semComprovante) {
+    pendencias.push(`anexar o comprovante de ${semComprovante} ${semComprovante === 1 ? 'saída' : 'saídas'}`);
+  }
+  if (EXIGIR_COMPROVANTES && !semConta && !(mes?.statement_photos || []).length) {
+    pendencias.push('anexar a foto ou PDF do extrato');
+  }
+  return pendencias;
+}
+
+/** Contas de todos os moradores de uma vez, para o fechamento em lote. */
+export async function carregarTodasAsContas() {
+  const [lanc, meses] = await Promise.all([
+    supabase.from('ResidentLedger').select('*'),
+    supabase.from('LedgerMonth').select('*'),
+  ]);
+  const error = lanc.error || meses.error;
+  const porMorador = new Map();
+  const de = (id) => {
+    if (!porMorador.has(id)) porMorador.set(id, { lancamentos: [], meses: [] });
+    return porMorador.get(id);
+  };
+  (lanc.data || []).forEach((row) => de(row.resident_id).lancamentos.push(paraLancamento(row)));
+  (meses.data || []).forEach((row) => de(row.resident_id).meses.push(paraMes(row)));
+  return { error, porMorador };
+}
+
+/**
+ * Fecha e assina o mês de vários moradores com a mesma assinatura
+ * (mesma data, hora, IP e aparelho). Cada morador é gravado à parte:
+ * uma falha não impede os demais.
+ */
+export async function fecharMeses({ residentIds, monthKey, assinatura }) {
+  const agora = new Date().toISOString();
+  const erros = [];
+  let ok = 0;
+  for (const residentId of residentIds) {
+    const { error } = await supabase.from('LedgerMonth').upsert({
+      resident_id: residentId,
+      month: monthKey,
+      closed_at: agora,
+      updated_at: agora,
+      ...assinatura,
+    }, { onConflict: 'resident_id,month' });
+    if (error) erros.push({ residentId, mensagem: error.message });
+    else ok += 1;
+  }
+  return { ok, erros };
 }

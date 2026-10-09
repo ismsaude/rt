@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, BookOpen, CalendarDays, Check, CheckCircle2, ClipboardList,
   Droplets, Eye, FileText, LayoutDashboard, MessageSquareText, Pill, Printer,
-  CalendarPlus, PackageCheck, RefreshCw, Save, Siren, Sparkles, Trash2, User, Utensils,
+  CalendarPlus, ChevronLeft, ChevronRight, PackageCheck, RefreshCw, Save, Siren, Sparkles, Trash2, User, Utensils,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import MonthlySheet from './MonthlySheet';
 import DuplicateMonthModal from './DuplicateMonthModal';
 import MonthClosingModal from './MonthClosingModal';
+import { mesAnterior, mesSeguinte } from '../../lib/schedule';
 import { behaviorTone, severityTone } from '../../lib/clinical';
 import {
   firstName, formatDate, formatDateTime, formatDayMonth, formatMonthLabel,
@@ -292,7 +293,13 @@ export default function ResidentReports({ currentUser }) {
                   </SelectField>
 
                   <Field label="Mês de referência">
-                    <MonthPicker value={monthKey} onChange={setMonthKey} withData={months} />
+                    <span className="u-row u-gap-2">
+                      <Button variant="secondary" iconOnly icon={ChevronLeft} aria-label="Mês anterior"
+                        onClick={() => setMonthKey(mesAnterior(monthKey))} />
+                      <MonthPicker value={monthKey} onChange={setMonthKey} withData={months} />
+                      <Button variant="secondary" iconOnly icon={ChevronRight} aria-label="Próximo mês"
+                        onClick={() => setMonthKey(mesSeguinte(monthKey))} />
+                    </span>
                   </Field>
                 </div>
 

@@ -22,6 +22,7 @@
 }
 .funds-conferencia__valor { font-size: var(--text-xl); font-variant-numeric: tabular-nums; }
 .funds-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.u-self-start { align-self: flex-start; }
 
 @media (max-width: 767px) {
   .funds-filters, .funds-conferencia { grid-template-columns: 1fr; }

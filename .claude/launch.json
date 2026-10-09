@@ -4,7 +4,7 @@
     {
       "name": "aurean-rt",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": ["run", "dev", "--", "--host"],
       "cwd": "frontend",
       "port": 5173
     }
