@@ -38,7 +38,6 @@ export default function AccessManagement({ currentUser }) {
   const [saving, setSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState(EMPTY);
-  const [showInactive, setShowInactive] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -172,24 +171,25 @@ export default function AccessManagement({ currentUser }) {
     }
 
     const ok = await confirm({
-      title: 'Remover acesso',
-      message: `${user.name} perderá o acesso ao sistema imediatamente.`,
-      warning: 'Os registros já lançados por esta pessoa permanecem no prontuário.',
-      confirmLabel: 'Remover acesso',
+      title: 'Excluir usuário',
+      message: `O cadastro de ${user.name} será apagado de vez.`,
+      warning: 'Para quem saiu da empresa, prefira inativar: o cadastro fica guardado e dá para reativar. Os registros já lançados permanecem no prontuário.',
+      confirmLabel: 'Excluir',
     });
     if (!ok) return;
 
     const { error } = await supabase.from('User').delete().eq('id', user.id);
     if (error) {
-      toast.error('Erro ao remover o acesso.');
+      toast.error('Erro ao excluir o usuário.');
       return;
     }
     setUsers((prev) => prev.filter((u) => u.id !== user.id));
-    toast.success('Acesso removido.');
+    setFormOpen(false);
+    setEditingId(null);
+    toast.success('Usuário excluído.');
   };
 
-  const inactiveCount = users.filter((u) => u.active === false).length;
-  const visibleUsers = showInactive ? users : users.filter((u) => u.active !== false);
+  const editingUser = editingId ? users.find((u) => u.id === editingId) : null;
 
   return (
     <div>
@@ -215,16 +215,6 @@ export default function AccessManagement({ currentUser }) {
           />
         </Card>
       ) : (
-        <>
-        {inactiveCount > 0 && (
-          <div className="u-row u-gap-3" style={{ justifyContent: 'flex-end', marginBottom: 'var(--space-3)' }}>
-            <Button variant="ghost" size="sm" onClick={() => setShowInactive((v) => !v)}>
-              {showInactive
-                ? 'Ocultar inativos'
-                : `Mostrar inativos (${inactiveCount})`}
-            </Button>
-          </div>
-        )}
         <Table>
           <thead>
             <tr>
@@ -232,11 +222,12 @@ export default function AccessManagement({ currentUser }) {
               <th>Acesso</th>
               <th>Perfil</th>
               <th>Registro</th>
-              <th style={{ textAlign: 'right' }}>Ações</th>
+              <th style={{ textAlign: 'center', width: 1 }}>Inativar</th>
+              <th style={{ textAlign: 'center', width: 1 }}>Editar</th>
             </tr>
           </thead>
           <tbody>
-            {visibleUsers.map((user) => {
+            {users.map((user) => {
               const meta = roleMeta(user.role);
               const protectedAccount = user.role === 'DIRETOR';
               const inactive = user.active === false;
@@ -266,35 +257,29 @@ export default function AccessManagement({ currentUser }) {
                   <td className="table__cell-muted">
                     {formatCouncil(user) || '—'}
                   </td>
-                  <td>
-                    <div className="table__actions">
-                      <Button
-                        variant="ghost" size="sm" iconOnly icon={Pencil}
-                        onClick={() => openEdit(user)}
-                        aria-label={`Editar ${user.name}`}
-                      />
-                      <Button
-                        variant="ghost" size="sm" iconOnly
-                        icon={inactive ? UserCheck : UserX}
-                        onClick={() => toggleActive(user)}
-                        disabled={protectedAccount || isSelf}
-                        title={inactive ? 'Reativar acesso' : 'Inativar acesso'}
-                        aria-label={`${inactive ? 'Reativar' : 'Inativar'} ${user.name}`}
-                      />
-                      <Button
-                        variant="danger-ghost" size="sm" iconOnly icon={Trash2}
-                        onClick={() => remove(user)}
-                        disabled={protectedAccount}
-                        aria-label={`Remover ${user.name}`}
-                      />
-                    </div>
+                  <td style={{ textAlign: 'center' }}>
+                    <Button
+                      variant="ghost" size="sm" iconOnly
+                      icon={inactive ? UserCheck : UserX}
+                      onClick={() => toggleActive(user)}
+                      disabled={protectedAccount || isSelf}
+                      title={inactive ? 'Reativar acesso' : 'Inativar acesso'}
+                      aria-label={`${inactive ? 'Reativar' : 'Inativar'} ${user.name}`}
+                    />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <Button
+                      variant="ghost" size="sm" iconOnly icon={Pencil}
+                      onClick={() => openEdit(user)}
+                      title="Editar cadastro"
+                      aria-label={`Editar ${user.name}`}
+                    />
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </Table>
-        </>
       )}
 
       <Modal
@@ -304,6 +289,15 @@ export default function AccessManagement({ currentUser }) {
         description={editingId ? 'Deixe a senha em branco para mantê-la inalterada.' : undefined}
         footer={
           <>
+            {editingUser && editingUser.role !== 'DIRETOR' && (
+              <Button
+                variant="danger-ghost" icon={Trash2}
+                onClick={() => remove(editingUser)}
+                style={{ marginRight: 'auto' }}
+              >
+                Excluir
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => setFormOpen(false)}>Cancelar</Button>
             <Button variant="primary" icon={Save} onClick={submit} loading={saving}>
               {editingId ? 'Salvar alterações' : 'Cadastrar'}
