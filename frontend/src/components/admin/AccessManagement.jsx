@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import { formatCouncil, PROFESSIONAL_COUNCILS, UFS } from '../../lib/clinical';
 import {
-  Alert, Avatar, Badge, Button, Card, EmptyState, Modal, PageHeader,
+  Avatar, Badge, Button, Card, EmptyState, Modal, PageHeader,
   SelectField, SkeletonList, Table, TextField, useConfirm, useToast,
 } from '../ui';
 
@@ -202,14 +202,6 @@ export default function AccessManagement({ currentUser }) {
           </Button>
         }
       />
-
-      <div style={{ marginBottom: 'var(--space-6)' }}>
-        <Alert tone="danger" title="Senhas ainda são armazenadas sem criptografia">
-          Enquanto a autenticação não migrar para o Supabase Auth, as senhas ficam
-          legíveis no banco. Evite reutilizar senhas pessoais e trate este cadastro
-          como informação sensível.
-        </Alert>
-      </div>
 
       {loading ? (
         <SkeletonList count={4} />
