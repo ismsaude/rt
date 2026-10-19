@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import { formatCouncil, PROFESSIONAL_COUNCILS, UFS } from '../../lib/clinical';
 import {
-  Avatar, Badge, Button, Card, EmptyState, Modal, PageHeader,
+  Alert, Avatar, Badge, Button, Card, EmptyState, Modal, PageHeader,
   SelectField, SkeletonList, Table, TextField, useConfirm, useToast,
 } from '../ui';
 
@@ -190,6 +190,11 @@ export default function AccessManagement({ currentUser }) {
   };
 
   const editingUser = editingId ? users.find((u) => u.id === editingId) : null;
+  const editingInactive = editingUser?.active === false;
+  // Inativos vão para o fim da lista, mantendo a ordem alfabética em cada grupo.
+  const sortedUsers = [...users].sort(
+    (a, b) => Number(a.active === false) - Number(b.active === false)
+  );
 
   return (
     <div>
@@ -227,7 +232,7 @@ export default function AccessManagement({ currentUser }) {
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => {
+            {sortedUsers.map((user) => {
               const meta = roleMeta(user.role);
               const protectedAccount = user.role === 'DIRETOR';
               const inactive = user.active === false;
@@ -258,14 +263,16 @@ export default function AccessManagement({ currentUser }) {
                     {formatCouncil(user) || '—'}
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <Button
-                      variant="ghost" size="sm" iconOnly
-                      icon={inactive ? UserCheck : UserX}
-                      onClick={() => toggleActive(user)}
-                      disabled={protectedAccount || isSelf}
-                      title={inactive ? 'Reativar acesso' : 'Inativar acesso'}
-                      aria-label={`${inactive ? 'Reativar' : 'Inativar'} ${user.name}`}
-                    />
+                    {/* Reativar só pelo cadastro, como o excluir. */}
+                    {!inactive && (
+                      <Button
+                        variant="ghost" size="sm" iconOnly icon={UserX}
+                        onClick={() => toggleActive(user)}
+                        disabled={protectedAccount || isSelf}
+                        title="Inativar acesso"
+                        aria-label={`Inativar ${user.name}`}
+                      />
+                    )}
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <Button
@@ -306,6 +313,17 @@ export default function AccessManagement({ currentUser }) {
         }
       >
         <form onSubmit={submit} className="u-stack u-gap-4">
+          {editingInactive && (
+            <Alert tone="warning" title="Acesso inativo">
+              <div className="u-stack u-gap-3" style={{ alignItems: 'flex-start' }}>
+                <span>Esta pessoa não consegue entrar no sistema.</span>
+                <Button size="sm" icon={UserCheck} onClick={() => toggleActive(editingUser)}>
+                  Reativar acesso
+                </Button>
+              </div>
+            </Alert>
+          )}
+
           <TextField
             label="Nome completo" required autoFocus
             value={form.name}
