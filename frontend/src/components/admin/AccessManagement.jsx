@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Eye, EyeOff, Pencil, Save, Shield, Trash2, UserPlus, Users, } from 'lucide-react';
+  Eye, EyeOff, Pencil, Save, Shield, Trash2, UserCheck, UserPlus, UserX, Users,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uid } from '../../lib/id';
 import { formatCouncil, PROFESSIONAL_COUNCILS, UFS } from '../../lib/clinical';
@@ -37,6 +38,7 @@ export default function AccessManagement({ currentUser }) {
   const [saving, setSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState(EMPTY);
+  const [showInactive, setShowInactive] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -127,6 +129,42 @@ export default function AccessManagement({ currentUser }) {
     load();
   };
 
+  const toggleActive = async (user) => {
+    if (user.role === 'DIRETOR') {
+      toast.warning('Contas de diretoria são protegidas e não podem ser inativadas.');
+      return;
+    }
+    if (user.id === currentUser?.id) {
+      toast.warning('Você não pode inativar o próprio acesso.');
+      return;
+    }
+
+    const inativar = user.active !== false;
+    const ok = await confirm(inativar ? {
+      title: 'Inativar acesso',
+      message: `${user.name} não conseguirá mais entrar no sistema, e quem estiver com a sessão aberta será desconectado.`,
+      warning: 'O cadastro e todos os registros desta pessoa continuam guardados. Dá para reativar depois.',
+      confirmLabel: 'Inativar',
+    } : {
+      title: 'Reativar acesso',
+      message: `${user.name} voltará a entrar no sistema com a senha que já tinha.`,
+      confirmLabel: 'Reativar',
+      tone: 'primary',
+    });
+    if (!ok) return;
+
+    const { error } = await supabase
+      .from('User')
+      .update({ active: !inativar, updatedAt: new Date().toISOString() })
+      .eq('id', user.id);
+    if (error) {
+      toast.error(`Erro ao ${inativar ? 'inativar' : 'reativar'}: ${error.message}`);
+      return;
+    }
+    setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, active: !inativar } : u)));
+    toast.success(inativar ? 'Acesso inativado.' : 'Acesso reativado.');
+  };
+
   const remove = async (user) => {
     if (user.role === 'DIRETOR') {
       toast.warning('Contas de diretoria são protegidas e não podem ser excluídas.');
@@ -149,6 +187,9 @@ export default function AccessManagement({ currentUser }) {
     setUsers((prev) => prev.filter((u) => u.id !== user.id));
     toast.success('Acesso removido.');
   };
+
+  const inactiveCount = users.filter((u) => u.active === false).length;
+  const visibleUsers = showInactive ? users : users.filter((u) => u.active !== false);
 
   return (
     <div>
@@ -182,6 +223,16 @@ export default function AccessManagement({ currentUser }) {
           />
         </Card>
       ) : (
+        <>
+        {inactiveCount > 0 && (
+          <div className="u-row u-gap-3" style={{ justifyContent: 'flex-end', marginBottom: 'var(--space-3)' }}>
+            <Button variant="ghost" size="sm" onClick={() => setShowInactive((v) => !v)}>
+              {showInactive
+                ? 'Ocultar inativos'
+                : `Mostrar inativos (${inactiveCount})`}
+            </Button>
+          </div>
+        )}
         <Table>
           <thead>
             <tr>
@@ -193,11 +244,13 @@ export default function AccessManagement({ currentUser }) {
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => {
+            {visibleUsers.map((user) => {
               const meta = roleMeta(user.role);
               const protectedAccount = user.role === 'DIRETOR';
+              const inactive = user.active === false;
+              const isSelf = user.id === currentUser?.id;
               return (
-                <tr key={user.id}>
+                <tr key={user.id} style={inactive ? { opacity: 0.6 } : undefined}>
                   <td>
                     <div className="u-row u-gap-3">
                       <Avatar name={user.name} size="sm" />
@@ -211,9 +264,12 @@ export default function AccessManagement({ currentUser }) {
                   </td>
                   <td className="table__cell-muted">{user.email}</td>
                   <td>
-                    <Badge tone={meta.tone} icon={protectedAccount ? Shield : undefined}>
-                      {meta.label}
-                    </Badge>
+                    <div className="u-stack u-gap-1" style={{ alignItems: 'flex-start' }}>
+                      <Badge tone={meta.tone} icon={protectedAccount ? Shield : undefined}>
+                        {meta.label}
+                      </Badge>
+                      {inactive && <Badge tone="neutral">Inativo</Badge>}
+                    </div>
                   </td>
                   <td className="table__cell-muted">
                     {formatCouncil(user) || '—'}
@@ -224,6 +280,14 @@ export default function AccessManagement({ currentUser }) {
                         variant="ghost" size="sm" iconOnly icon={Pencil}
                         onClick={() => openEdit(user)}
                         aria-label={`Editar ${user.name}`}
+                      />
+                      <Button
+                        variant="ghost" size="sm" iconOnly
+                        icon={inactive ? UserCheck : UserX}
+                        onClick={() => toggleActive(user)}
+                        disabled={protectedAccount || isSelf}
+                        title={inactive ? 'Reativar acesso' : 'Inativar acesso'}
+                        aria-label={`${inactive ? 'Reativar' : 'Inativar'} ${user.name}`}
                       />
                       <Button
                         variant="danger-ghost" size="sm" iconOnly icon={Trash2}
@@ -238,6 +302,7 @@ export default function AccessManagement({ currentUser }) {
             })}
           </tbody>
         </Table>
+        </>
       )}
 
       <Modal

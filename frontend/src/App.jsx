@@ -371,6 +371,29 @@ export default function App() {
     }
   }, []);
 
+  // Quem foi inativado (ou removido) perde a sessão já aberta: confere no
+  // banco ao abrir o app, ao voltar para a aba e a cada poucos minutos.
+  const sessionUserId = session?.user?.id;
+  useEffect(() => {
+    if (!sessionUserId) return undefined;
+    let cancelled = false;
+    const check = async () => {
+      const { data, error } = await supabase
+        .from('User').select('id, active').eq('id', sessionUserId).maybeSingle();
+      if (cancelled || error) return; // sem internet não derruba ninguém
+      if (!data || data.active === false) handleLogout();
+    };
+    check();
+    const onVisible = () => document.visibilityState === 'visible' && check();
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = setInterval(check, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisible);
+      clearInterval(timer);
+    };
+  }, [sessionUserId, handleLogout]);
+
   const content = useMemo(() => {
     if (!session) return <Login onLogin={handleLogin} />;
     return (

@@ -63,13 +63,14 @@ export async function assinar({ user, password }) {
   if (!ehDev) {
     const { data, error } = await supabase
       .from('User')
-      .select('id, name, role, job_title, professional_council, professional_id, professional_uf')
+      .select('id, name, role, job_title, active, professional_council, professional_id, professional_uf')
       .eq('email', user?.email)
       .eq('password', password)
       .maybeSingle();
 
     if (error) return { ok: false, motivo: 'Não foi possível validar a senha agora.' };
     if (!data) return { ok: false, motivo: 'Senha incorreta.' };
+    if (data.active === false) return { ok: false, motivo: 'Este acesso está desativado.' };
 
     const [ip] = await Promise.all([obterIP()]);
 
