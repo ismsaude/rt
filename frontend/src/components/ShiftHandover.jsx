@@ -30,8 +30,10 @@ const blankEntry = () => ({
 });
 
 
-export default function ShiftHandover({ currentUser }) {
+export default function ShiftHandover({ currentUser, role }) {
   const toast = useToast();
+  // A técnica de enfermagem acompanha os plantões, mas não os registra.
+  const somenteLeitura = role === 'enfermeiro';
 
   const [residents, setResidents] = useState([]);
   const [entries, setEntries] = useState({});
@@ -176,8 +178,12 @@ export default function ShiftHandover({ currentUser }) {
     <div>
       <PageHeader
         title="Passagem de plantão"
-        description="Registre como cada morador passou e as ocorrências da casa."
+        description={somenteLeitura
+          ? 'Relatórios dos plantões registrados pelas cuidadoras.'
+          : 'Registre como cada morador passou e as ocorrências da casa.'}
       />
+
+      {!somenteLeitura && (<>
 
       {attentionCount > 0 && (
         <div style={{ marginBottom: 'var(--space-5)' }}>
@@ -315,9 +321,10 @@ export default function ShiftHandover({ currentUser }) {
           </Button>
         </div>
       )}
+      </>)}
 
       {/* ------------------------- Histórico ------------------------- */}
-      <section className="section" style={{ marginTop: 'var(--space-12)' }}>
+      <section className="section" style={somenteLeitura ? undefined : { marginTop: 'var(--space-12)' }}>
         <div className="section__header">
           <h2 className="section__title">
             <History size={18} aria-hidden="true" />

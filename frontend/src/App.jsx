@@ -68,7 +68,8 @@ const ADMIN_MENU = [
 
 const NAV_BY_ROLE = {
   cuidador: ['tarefas', 'medicacoes', 'cardapio', 'plantao'],
-  enfermeiro: ['enfermagem', 'sinais', 'medicacoes', 'estoque', 'programacao'],
+  // A técnica também lê os plantões das cuidadoras (só leitura).
+  enfermeiro: ['enfermagem', 'sinais', 'medicacoes', 'estoque', 'programacao', 'plantao'],
 };
 
 const HOME_BY_ROLE = { admin: 'inicio', enfermeiro: 'enfermagem', cuidador: 'tarefas' };
