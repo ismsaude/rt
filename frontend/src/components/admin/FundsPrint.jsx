@@ -20,6 +20,48 @@ import { aguardarImagens } from './MonthSheetsPrint';
  * As fotos estão em bucket privado: as URLs assinadas são geradas aqui,
  * antes de montar as páginas.
  */
+/**
+ * Páginas de comprovantes de um morador: uma por nota, na ordem da
+ * tabela, e por fim o extrato. Já traz as URLs assinadas (bucket privado).
+ */
+export async function montarPaginasDeComprovantes({ relatorio, extrato }) {
+  const itens = relatorio.linhas.filter((l) => l.receipts.length > 0);
+  const todas = [
+    ...itens.flatMap((l) => l.receipts.map((r) => ({ ...r, chave: `${l.id}:${r.path}` }))),
+    ...extrato.map((r) => ({ ...r, chave: `extrato:${r.path}` })),
+  ];
+  if (!todas.length) return [];
+  const assinadas = await assinarFotos(todas, BUCKET_COMPROVANTES);
+  const urlDe = (chave) => assinadas.find((a) => a.chave === chave)?.url;
+
+  return [
+    ...itens.flatMap((l) => l.receipts.map((r) => ({
+      titulo: `Item ${l.item} · ${formatDate(l.entry_date)}`,
+      legenda: `${l.description} — ${formatarReais(l.cents)}`,
+      url: urlDe(`${l.id}:${r.path}`),
+    }))),
+    ...extrato.map((r, i) => ({
+      titulo: `Extrato bancário${extrato.length > 1 ? ` (${i + 1}/${extrato.length})` : ''}`,
+      legenda: `Saldo final conforme o extrato`,
+      url: urlDe(`extrato:${r.path}`),
+    })),
+  ];
+}
+
+/** Uma página de comprovante, identificada pelo morador e pelo item. */
+export function PaginaDeComprovante({ resident, pagina }) {
+  return (
+    <section className="funds-receipt-page">
+      <header>
+        <div className="funds-receipt-page__who">{resident.name}</div>
+        <h2>{pagina.titulo}</h2>
+        <p>{pagina.legenda}</p>
+      </header>
+      {pagina.url ? <img src={pagina.url} alt={pagina.titulo} /> : <p>Imagem indisponível.</p>}
+    </section>
+  );
+}
+
 export default function FundsPrint({
   modo, resident, monthKey, relatorio, assinatura, extrato, onDone,
 }) {
@@ -31,27 +73,7 @@ export default function FundsPrint({
     let cancelado = false;
     (async () => {
       if (modo !== 'comprovantes') { setPaginas([]); return; }
-
-      const itens = relatorio.linhas.filter((l) => l.receipts.length > 0);
-      const todas = [
-        ...itens.flatMap((l) => l.receipts.map((r) => ({ ...r, chave: `${l.id}:${r.path}` }))),
-        ...extrato.map((r) => ({ ...r, chave: `extrato:${r.path}` })),
-      ];
-      const assinadas = await assinarFotos(todas, BUCKET_COMPROVANTES);
-      const urlDe = (chave) => assinadas.find((a) => a.chave === chave)?.url;
-
-      const lista = [
-        ...itens.flatMap((l) => l.receipts.map((r) => ({
-          titulo: `Item ${l.item} · ${formatDate(l.entry_date)}`,
-          legenda: `${l.description} — ${formatarReais(l.cents)}`,
-          url: urlDe(`${l.id}:${r.path}`),
-        }))),
-        ...extrato.map((r, i) => ({
-          titulo: `Extrato bancário${extrato.length > 1 ? ` (${i + 1}/${extrato.length})` : ''}`,
-          legenda: `Saldo final conforme o extrato`,
-          url: urlDe(`extrato:${r.path}`),
-        })),
-      ];
+      const lista = await montarPaginasDeComprovantes({ relatorio, extrato });
       if (!cancelado) setPaginas(lista);
     })();
     return () => { cancelado = true; };
@@ -102,14 +124,7 @@ export default function FundsPrint({
       )}
 
       {paginas.map((p, i) => (
-        <section className="funds-receipt-page" key={`${p.titulo}-${i}`}>
-          <header>
-            <div className="funds-receipt-page__who">{resident.name}</div>
-            <h2>{p.titulo}</h2>
-            <p>{p.legenda}</p>
-          </header>
-          {p.url ? <img src={p.url} alt={p.titulo} /> : <p>Imagem indisponível.</p>}
-        </section>
+        <PaginaDeComprovante key={`${p.titulo}-${i}`} resident={resident} pagina={p} />
       ))}
     </div>,
     document.body

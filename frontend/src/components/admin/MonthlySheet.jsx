@@ -89,9 +89,10 @@ export default function MonthlySheet({
   const avisouFalhaRef = useRef(false);
 
   /* Ficha assinada não se altera: o texto impresso precisa ser
-     exatamente o que foi assinado. Só o acesso de desenvolvimento
-     destrava, e destravar apaga a assinatura — ver destravar(). */
-  const ehDesenvolvedor = currentUser?.email === 'dev@aurean.com';
+     exatamente o que foi assinado. Supervisão e Diretoria podem
+     destravar, e destravar apaga a assinatura — ver destravar(). */
+  const podeDestravar =
+    ['ADMIN', 'DIRETOR'].includes(currentUser?.role) || currentUser?.email === 'dev@aurean.com';
   const travada = !!assinatura;
 
   const [year, month] = monthKey.split('-').map(Number);
@@ -431,7 +432,7 @@ export default function MonthlySheet({
         <div className="u-row u-gap-2">
           {travada ? (
             <>
-              {ehDesenvolvedor && (
+              {podeDestravar && (
                 <Button variant="ghost" size="sm" icon={LockOpen} onClick={destravar}>
                   Destravar
                 </Button>
@@ -474,9 +475,9 @@ export default function MonthlySheet({
           <Alert tone="info" title="Ficha assinada">
             O conteúdo não pode mais ser alterado: o documento impresso precisa ser
             exatamente o que foi assinado por {assinatura.signed_by_name}.
-            {ehDesenvolvedor
+            {podeDestravar
               ? ' Use "Destravar" para editar — a assinatura será removida e a ficha precisará ser assinada de novo.'
-              : ' Para corrigir algo, peça ao responsável técnico do sistema.'}
+              : ' Para corrigir algo, peça à supervisão.'}
           </Alert>
         </div>
       )}

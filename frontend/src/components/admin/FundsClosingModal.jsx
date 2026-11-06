@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, Download, Lock, PenLine } from 'lucide-react';
 import {
@@ -11,6 +11,7 @@ import {
 import SignatureModal from '../SignatureModal';
 import FundsDocument from './FundsDocument';
 import { aguardarImagens } from './MonthSheetsPrint';
+import { montarPaginasDeComprovantes, PaginaDeComprovante } from './FundsPrint';
 
 /**
  * Fechamento do mês dos recursos: todos os moradores de uma vez.
@@ -73,11 +74,32 @@ function Passo({ numero, titulo, descricao, children, feito = false }) {
   );
 }
 
-/** Todos os relatórios do mês numa impressão só (uma página por morador). */
+/**
+ * O mês inteiro numa impressão só: para cada morador, o relatório e em
+ * seguida as notas e o extrato, como na impressão da tela do morador.
+ */
 function ImpressaoEmLote({ itens, monthKey, onDone }) {
   const ref = useRef(null);
+  const [comprovantes, setComprovantes] = useState(null);
 
+  // 1. Assina as URLs das fotos de todos os moradores.
   useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      const listas = await Promise.all(itens.map(({ relatorio, mes }) =>
+        montarPaginasDeComprovantes({ relatorio, extrato: mes?.statement_photos || [] })
+          .catch(() => [])
+      ));
+      if (!cancelado) setComprovantes(listas);
+    })();
+    return () => { cancelado = true; };
+    // Montado uma vez por impressão.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 2. Com tudo montado, espera as imagens e imprime.
+  useEffect(() => {
+    if (!comprovantes) return undefined;
     let encerrado = false;
     const concluir = () => {
       if (encerrado) return;
@@ -86,7 +108,9 @@ function ImpressaoEmLote({ itens, monthKey, onDone }) {
     };
     document.body.classList.add('is-batch-print');
     (async () => {
-      await aguardarImagens(ref.current, itens.length); // a logo de cada relatório
+      // A logo de cada relatório e cada foto de comprovante.
+      const fotos = comprovantes.flat().filter((p) => p.url).length;
+      await aguardarImagens(ref.current, itens.length + fotos);
       if (encerrado) return;
       window.addEventListener('afterprint', concluir, { once: true });
       window.print();
@@ -97,20 +121,25 @@ function ImpressaoEmLote({ itens, monthKey, onDone }) {
       window.removeEventListener('afterprint', concluir);
       document.body.classList.remove('is-batch-print');
     };
-    // Montado uma vez por impressão.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [comprovantes]);
+
+  if (!comprovantes) return null;
 
   return createPortal(
     <div className="sheet-batch" ref={ref} aria-hidden="true">
-      {itens.map(({ resident, relatorio, mes }) => (
-        <FundsDocument
-          key={resident.id}
-          resident={resident}
-          monthKey={monthKey}
-          relatorio={relatorio}
-          assinatura={mes?.closed_at ? mes : null}
-        />
+      {itens.map(({ resident, relatorio, mes }, i) => (
+        <Fragment key={resident.id}>
+          <FundsDocument
+            resident={resident}
+            monthKey={monthKey}
+            relatorio={relatorio}
+            assinatura={mes?.closed_at ? mes : null}
+          />
+          {comprovantes[i].map((p, j) => (
+            <PaginaDeComprovante key={`${p.titulo}-${j}`} resident={resident} pagina={p} />
+          ))}
+        </Fragment>
       ))}
     </div>,
     document.body
@@ -308,7 +337,7 @@ export default function FundsClosingModal({ open, onClose, monthKey, residents, 
               <Passo
                 numero={3}
                 titulo="Baixar tudo em PDF"
-                descricao="Abre a impressão com o relatório de cada morador, um por página. Escolha “Salvar como PDF” para guardar o mês inteiro num arquivo só."
+                descricao="Abre a impressão com o relatório de cada morador seguido das notas e do extrato dele. Escolha “Salvar como PDF” para guardar o mês inteiro num arquivo só."
               >
                 <div className="u-stack u-gap-3">
                   {semAssinaturaNoPdf > 0 && (
